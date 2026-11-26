@@ -1,3 +1,3 @@
-файл,рядок,тип,проблема
-spend.csv,,попередження,немає рядків з даними
-revenue.csv,,попередження,порожній файл
+file,line,type,message
+spend.csv,,warning,немає рядків з даними
+revenue.csv,,warning,порожній файл

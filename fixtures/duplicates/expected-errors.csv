@@ -1,2 +1,2 @@
-файл,рядок,тип,проблема
-,,попередження,"злито: black-friday, BLACK-FRIDAY, Black-Friday"
+file,line,type,message
+,,warning,"злито: black-friday, BLACK-FRIDAY, Black-Friday"
