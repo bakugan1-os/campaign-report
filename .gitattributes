@@ -1,5 +1,5 @@
 # Source files get normalised line endings in the repo.
-* text=auto
+* text=auto eol=lf
 
 # Fixtures are byte-exact test data: BOM, CRLF and LF must survive a checkout.
 fixtures/** -text
