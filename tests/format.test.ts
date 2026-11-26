@@ -1,6 +1,12 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { formatMoney, formatRoi } from '../src/format.js';
-import type { TotalRow } from '../src/aggregate.js';
+import { formatIssuesCsv, formatIssuesText, formatMoney, formatReport, formatRoi } from '../src/format.js';
+import type { Report, TotalRow } from '../src/aggregate.js';
+import type { Issue } from '../src/types.js';
+
+/** Фікстури лежать з LF; CRLF тут не очікуємо, але нормалізуємо для спокою. */
+const fixture = (path: string): string =>
+  readFileSync(new URL(`../fixtures/${path}`, import.meta.url), 'utf8').replace(/\r\n/g, '\n');
 
 /** ROI рахується з мінорних одиниць; roiDefined лише каже, чи він визначений. */
 const roi = (spendMinor: number, revenueMinor: number): TotalRow => ({
@@ -91,5 +97,171 @@ describe('formatRoi', () => {
 
   it('великі суми без втрати точності', () => {
     expect(formatRoi(roi(100000000, 300000000))).toBe('200.00%');
+  });
+});
+
+const basicReport: Report = {
+  rows: [
+    { campaign: 'black-friday', spendMinor: 340000, revenueMinor: 289075, roiDefined: true },
+    { campaign: 'brand-awareness', spendMinor: 75025, revenueMinor: 150000, roiDefined: true },
+    { campaign: 'winter-sale', spendMinor: 120050, revenueMinor: 240000, roiDefined: true },
+  ],
+  total: { spendMinor: 535075, revenueMinor: 679075, roiDefined: true },
+  issues: [],
+};
+
+const commasReport: Report = {
+  rows: [
+    { campaign: 'Autumn, Winter', spendMinor: 10000, revenueMinor: 15000, roiDefined: true },
+    { campaign: 'Brand "Hero" push', spendMinor: 20000, revenueMinor: 18000, roiDefined: true },
+    { campaign: 'promo | retargeting', spendMinor: 30000, revenueMinor: 90000, roiDefined: true },
+  ],
+  total: { spendMinor: 60000, revenueMinor: 123000, roiDefined: true },
+  issues: [],
+};
+
+const zeroSpendReport: Report = {
+  rows: [
+    { campaign: 'cashback-test', spendMinor: 20000, revenueMinor: 20000, roiDefined: true },
+    { campaign: 'dormant-list', spendMinor: 0, revenueMinor: 0, roiDefined: false },
+    { campaign: 'promo-mix', spendMinor: 30000, revenueMinor: 45000, roiDefined: true },
+    { campaign: 'referral-push', spendMinor: 0, revenueMinor: 90000, roiDefined: false },
+    { campaign: 'refund-only', spendMinor: -5000, revenueMinor: 1000, roiDefined: false },
+  ],
+  total: { spendMinor: 45000, revenueMinor: 156000, roiDefined: true },
+  issues: [],
+};
+
+const emptyReport: Report = {
+  rows: [],
+  total: { spendMinor: 0, revenueMinor: 0, roiDefined: false },
+  issues: [],
+};
+
+describe('formatReport', () => {
+  it('csv збігається з fixtures/basic/expected.csv', () => {
+    expect(formatReport(basicReport, 'csv')).toBe(fixture('basic/expected.csv'));
+  });
+
+  it('md збігається з fixtures/basic/expected.md', () => {
+    expect(formatReport(basicReport, 'md')).toBe(fixture('basic/expected.md'));
+  });
+
+  it('заголовки і підпис підсумку', () => {
+    const lines = formatReport(basicReport, 'csv').split('\n');
+    expect(lines[0]).toBe('campaign,spend,revenue,ROI');
+    expect(lines[4]?.startsWith('Total,')).toBe(true);
+  });
+
+  it('md тримає рядок вирівнювання відразу після заголовка', () => {
+    expect(formatReport(basicReport, 'md').split('\n')[1]).toBe('| --- | ---: | ---: | ---: |');
+  });
+
+  it('csv бере в лапки назви з комами і дублює лапки', () => {
+    expect(formatReport(commasReport, 'csv')).toBe(fixture('commas-in-names/expected.csv'));
+  });
+
+  it('md екранує | в назві', () => {
+    expect(formatReport(commasReport, 'md')).toBe(fixture('commas-in-names/expected.md'));
+  });
+
+  it('csv не бере в лапки назву без ком і лапок', () => {
+    const line = formatReport(commasReport, 'csv').split('\n')[3];
+    expect(line).toBe('promo | retargeting,300.00,900.00,200.00%');
+  });
+
+  it('невизначений ROI і мінусові суми: csv', () => {
+    expect(formatReport(zeroSpendReport, 'csv')).toBe(fixture('zero-spend/expected.csv'));
+  });
+
+  it('невизначений ROI і мінусові суми: md', () => {
+    expect(formatReport(zeroSpendReport, 'md')).toBe(fixture('zero-spend/expected.md'));
+  });
+
+  it('порожній звіт: лише заголовок і Total', () => {
+    expect(formatReport(emptyReport, 'csv')).toBe(fixture('empty-file/expected.csv'));
+    expect(formatReport(emptyReport, 'md')).toBe(fixture('empty-file/expected.md'));
+  });
+
+  it('вивід завжди закінчується переводом рядка', () => {
+    expect(formatReport(basicReport, 'csv').endsWith('\n')).toBe(true);
+    expect(formatReport(basicReport, 'md').endsWith('\n')).toBe(true);
+  });
+
+  it('назва з переводом рядка не рве csv', () => {
+    const report: Report = {
+      rows: [{ campaign: 'two\nlines', spendMinor: 10000, revenueMinor: 10000, roiDefined: true }],
+      total: { spendMinor: 10000, revenueMinor: 10000, roiDefined: true },
+      issues: [],
+    };
+    expect(formatReport(report, 'csv').split('\n')[1]).toBe('"two');
+  });
+});
+
+const brokenRowsIssues: Issue[] = [
+  { file: 'spend.csv', line: 3, kind: 'помилка', message: 'порожня сума' },
+  { file: 'spend.csv', line: 4, kind: 'помилка', message: 'сума не число: "abc"' },
+  { file: 'spend.csv', line: 5, kind: 'помилка', message: 'порожня назва кампанії' },
+  { file: 'spend.csv', line: 6, kind: 'помилка', message: 'порожня назва кампанії' },
+  { file: 'spend.csv', line: 7, kind: 'помилка', message: 'більше 2 знаків після коми: "10.555"' },
+  { file: 'spend.csv', line: 9, kind: 'помилка', message: 'замало полів: 1, у заголовку 2' },
+  { file: 'revenue.csv', line: 3, kind: 'помилка', message: 'сума не число: "1 234.00"' },
+];
+
+const emptyFileIssues: Issue[] = [
+  { file: 'spend.csv', kind: 'попередження', message: 'немає рядків з даними' },
+  { file: 'revenue.csv', kind: 'попередження', message: 'порожній файл' },
+];
+
+const mergedIssues: Issue[] = [
+  { kind: 'попередження', message: 'злито: black-friday, BLACK-FRIDAY, Black-Friday' },
+];
+
+const missingColumnIssues: Issue[] = [
+  { file: 'spend.csv', kind: 'помилка', message: 'немає колонки "spend"' },
+];
+
+describe('formatIssuesText', () => {
+  it('збігається з fixtures/broken-rows/expected-errors.txt', () => {
+    expect(formatIssuesText(brokenRowsIssues)).toBe(fixture('broken-rows/expected-errors.txt'));
+  });
+
+  it('попередження рівня файлу - без номера рядка і без підсумку', () => {
+    expect(formatIssuesText(emptyFileIssues)).toBe(fixture('empty-file/expected-errors.txt'));
+  });
+
+  it('попередження без файлу - лише текст', () => {
+    expect(formatIssuesText(mergedIssues)).toBe(fixture('duplicates/expected-errors.txt'));
+  });
+
+  it('фатальна помилка без номера рядка не рахується як пропущений рядок', () => {
+    expect(formatIssuesText(missingColumnIssues)).toBe(fixture('missing-column/expected-errors.txt'));
+  });
+
+  it('рахує пропущені рядки лише серед помилок з номером рядка', () => {
+    const text = formatIssuesText([...brokenRowsIssues, ...mergedIssues, ...missingColumnIssues]);
+    expect(text).toContain('Пропущено рядків: 7');
+  });
+
+  it('без проблем - порожній рядок', () => {
+    expect(formatIssuesText([])).toBe('');
+  });
+});
+
+describe('formatIssuesCsv', () => {
+  it('збігається з fixtures/broken-rows/expected-errors.csv', () => {
+    expect(formatIssuesCsv(brokenRowsIssues)).toBe(fixture('broken-rows/expected-errors.csv'));
+  });
+
+  it('попередження про злиття: порожні file і line, тип warning', () => {
+    expect(formatIssuesCsv(mergedIssues)).toBe(fixture('duplicates/expected-errors.csv'));
+  });
+
+  it('попередження рівня файлу: порожній line', () => {
+    expect(formatIssuesCsv(emptyFileIssues)).toBe(fixture('empty-file/expected-errors.csv'));
+  });
+
+  it('без проблем - порожній рядок, файл писати нічого', () => {
+    expect(formatIssuesCsv([])).toBe('');
   });
 });

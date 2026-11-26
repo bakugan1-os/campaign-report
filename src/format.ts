@@ -1,4 +1,13 @@
-import type { TotalRow } from './aggregate.js';
+import type { Report, TotalRow } from './aggregate.js';
+import type { Issue, IssueKind } from './types.js';
+
+export type ReportFormat = 'csv' | 'md';
+
+/** Усі видимі підписи звіту живуть тут, щоб перейменування не чіпало логіку. */
+const COLUMNS = ['campaign', 'spend', 'revenue', 'ROI'] as const;
+const TOTAL_LABEL = 'Total';
+const MD_ALIGNMENT = ['---', '---:', '---:', '---:'] as const;
+const ISSUE_TYPE: Record<IssueKind, string> = { помилка: 'error', попередження: 'warning' };
 
 /**
  * Ціле число сотих -> рядок з двома знаками після коми.
@@ -31,4 +40,72 @@ function roiHundredths(spendMinor: number, revenueMinor: number): number {
 export function formatRoi(row: TotalRow): string {
   if (!row.roiDefined) return '-';
   return `${formatMoney(roiHundredths(row.spendMinor, row.revenueMinor))}%`;
+}
+
+/** RFC 4180: лапки лише коли в полі є кома, лапка або перевід рядка. */
+function csvField(value: string): string {
+  return /[",\r\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
+}
+
+function csvLine(fields: readonly string[]): string {
+  return fields.map(csvField).join(',');
+}
+
+function mdLine(fields: readonly string[]): string {
+  return `| ${fields.map((field) => field.replace(/\|/g, '\\|')).join(' | ')} |`;
+}
+
+function cells(campaign: string, row: TotalRow): string[] {
+  return [campaign, formatMoney(row.spendMinor), formatMoney(row.revenueMinor), formatRoi(row)];
+}
+
+function document(lines: readonly string[]): string {
+  return `${lines.join('\n')}\n`;
+}
+
+export function formatReport(report: Report, format: ReportFormat): string {
+  const body = [
+    ...report.rows.map((row) => cells(row.campaign, row)),
+    cells(TOTAL_LABEL, report.total),
+  ];
+
+  if (format === 'csv') {
+    return document([csvLine(COLUMNS), ...body.map(csvLine)]);
+  }
+  return document([mdLine(COLUMNS), `| ${MD_ALIGNMENT.join(' | ')} |`, ...body.map(mdLine)]);
+}
+
+/** Звіт помилок для stderr. Порядок проблем не змінюємо. */
+export function formatIssuesText(issues: readonly Issue[]): string {
+  if (issues.length === 0) return '';
+
+  const lines = issues.map((issue) => {
+    if (issue.file === undefined) return issue.message;
+    if (issue.line === undefined) return `${issue.file}: ${issue.message}`;
+    return `${issue.file}:${issue.line}: ${issue.message}`;
+  });
+
+  // Пропущені рядки - це помилки з номером рядка. Проблема рівня файлу рядків не їсть.
+  const skipped = issues.filter(
+    (issue) => issue.kind === 'помилка' && issue.line !== undefined,
+  ).length;
+  if (skipped > 0) lines.push(`Пропущено рядків: ${skipped}`);
+
+  return document(lines);
+}
+
+/** Звіт помилок для <out>.errors.csv. */
+export function formatIssuesCsv(issues: readonly Issue[]): string {
+  if (issues.length === 0) return '';
+
+  const lines = issues.map((issue) =>
+    csvLine([
+      issue.file ?? '',
+      issue.line === undefined ? '' : String(issue.line),
+      ISSUE_TYPE[issue.kind],
+      issue.message,
+    ]),
+  );
+
+  return document([csvLine(['file', 'line', 'type', 'message']), ...lines]);
 }
