@@ -8,8 +8,8 @@ export type AmountColumn = 'spend' | 'revenue';
 export type IssueKind = 'помилка' | 'попередження';
 
 export interface Issue {
-  /** Імʼя файлу, як його показувати в звіті помилок. */
-  file: string;
+  /** Імʼя файлу, як його показувати в звіті помилок. Немає - проблема не привʼязана до файлу. */
+  file?: string;
   /** Номер рядка у файлі, 1-based, заголовок = 1. Немає - проблема рівня файлу. */
   line?: number;
   kind: IssueKind;
