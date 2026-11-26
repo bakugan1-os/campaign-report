@@ -29,6 +29,6 @@ function roiHundredths(spendMinor: number, revenueMinor: number): number {
 
 /** ROI для клітинки звіту. "-" коли ROI не визначений (витрати <= 0). */
 export function formatRoi(row: TotalRow): string {
-  if (row.roiPercent === null) return '-';
+  if (!row.roiDefined) return '-';
   return `${formatMoney(roiHundredths(row.spendMinor, row.revenueMinor))}%`;
 }

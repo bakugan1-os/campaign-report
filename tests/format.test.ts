@@ -2,11 +2,11 @@ import { describe, expect, it } from 'vitest';
 import { formatMoney, formatRoi } from '../src/format.js';
 import type { TotalRow } from '../src/aggregate.js';
 
-/** ROI рахуємо з мінорних одиниць; roiPercent потрібен лише як ознака "визначений". */
+/** ROI рахується з мінорних одиниць; roiDefined лише каже, чи він визначений. */
 const roi = (spendMinor: number, revenueMinor: number): TotalRow => ({
   spendMinor,
   revenueMinor,
-  roiPercent: spendMinor <= 0 ? null : ((revenueMinor - spendMinor) / spendMinor) * 100,
+  roiDefined: spendMinor > 0,
 });
 
 describe('formatMoney', () => {
@@ -73,6 +73,11 @@ describe('formatRoi', () => {
   it('округлює вгору, коли залишок більше половини', () => {
     expect(formatRoi(roi(120050, 240000))).toBe('99.92%');
     expect(formatRoi(roi(123450, 200000))).toBe('62.01%');
+  });
+
+  it('ROI рядка Total рахується від загальних сум, а не як середнє по кампаніях', () => {
+    // кампанії 10000->30000 (200%) і 90000->90000 (0%): середнє дало б 100.00%
+    expect(formatRoi(roi(100000, 120000))).toBe('20.00%');
   });
 
   it('відтворює числа з фікстур', () => {

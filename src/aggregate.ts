@@ -5,8 +5,8 @@ export interface ReportRow {
   campaign: string;
   spendMinor: number;
   revenueMinor: number;
-  /** null коли витрати <= 0 - ROI не визначений, у виводі "-". */
-  roiPercent: number | null;
+  /** false коли витрати <= 0 - ROI не визначений, у виводі "-". Саме число рахує format. */
+  roiDefined: boolean;
 }
 
 export type TotalRow = Omit<ReportRow, 'campaign'>;
@@ -24,10 +24,9 @@ interface Bucket {
   revenueMinor: number;
 }
 
-/** ROI у відсотках, без округлення. Округлення - робота format. */
-function roiPercent(spendMinor: number, revenueMinor: number): number | null {
-  if (spendMinor <= 0) return null;
-  return ((revenueMinor - spendMinor) / spendMinor) * 100;
+/** ROI визначений лише при додатних витратах: інакше ділення на нуль або безглуздий знак. */
+function isRoiDefined(spendMinor: number): boolean {
+  return spendMinor > 0;
 }
 
 export function aggregate(
@@ -61,7 +60,7 @@ export function aggregate(
         campaign: bucket.spellings[0] ?? '',
         spendMinor: bucket.spendMinor,
         revenueMinor: bucket.revenueMinor,
-        roiPercent: roiPercent(bucket.spendMinor, bucket.revenueMinor),
+        roiDefined: isRoiDefined(bucket.spendMinor),
       } satisfies ReportRow,
     }))
     .sort((a, b) => a.row.campaign.localeCompare(b.row.campaign, 'uk'));
@@ -80,7 +79,7 @@ export function aggregate(
 
   return {
     rows,
-    total: { spendMinor, revenueMinor, roiPercent: roiPercent(spendMinor, revenueMinor) },
+    total: { spendMinor, revenueMinor, roiDefined: isRoiDefined(spendMinor) },
     issues,
   };
 }

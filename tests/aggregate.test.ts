@@ -8,22 +8,22 @@ describe('aggregate', () => {
   it('зводить витрати і доходи однієї кампанії', () => {
     const report = aggregate([row('winter-sale', 100000)], [row('winter-sale', 300000)]);
     expect(report.rows).toEqual([
-      { campaign: 'winter-sale', spendMinor: 100000, revenueMinor: 300000, roiPercent: 200 },
+      { campaign: 'winter-sale', spendMinor: 100000, revenueMinor: 300000, roiDefined: true },
     ]);
     expect(report.issues).toEqual([]);
   });
 
-  it('кампанія лише у витратах: дохід 0, ROI -100%', () => {
+  it('кампанія лише у витратах: дохід 0, ROI визначений', () => {
     const report = aggregate([row('winter-sale', 100000)], []);
     expect(report.rows).toEqual([
-      { campaign: 'winter-sale', spendMinor: 100000, revenueMinor: 0, roiPercent: -100 },
+      { campaign: 'winter-sale', spendMinor: 100000, revenueMinor: 0, roiDefined: true },
     ]);
   });
 
   it('кампанія лише в доходах: витрати 0, ROI не визначений', () => {
     const report = aggregate([], [row('referral-push', 30000)]);
     expect(report.rows).toEqual([
-      { campaign: 'referral-push', spendMinor: 0, revenueMinor: 30000, roiPercent: null },
+      { campaign: 'referral-push', spendMinor: 0, revenueMinor: 30000, roiDefined: false },
     ]);
   });
 
@@ -33,7 +33,7 @@ describe('aggregate', () => {
       [row('black-friday', 300000), row('black-friday', 50000)],
     );
     expect(report.rows).toEqual([
-      { campaign: 'black-friday', spendMinor: 175000, revenueMinor: 350000, roiPercent: 100 },
+      { campaign: 'black-friday', spendMinor: 175000, revenueMinor: 350000, roiDefined: true },
     ]);
   });
 
@@ -43,7 +43,7 @@ describe('aggregate', () => {
       [row('Black-Friday', 300000)],
     );
     expect(report.rows).toEqual([
-      { campaign: 'black-friday', spendMinor: 125000, revenueMinor: 300000, roiPercent: 140 },
+      { campaign: 'black-friday', spendMinor: 125000, revenueMinor: 300000, roiDefined: true },
     ]);
     expect(report.issues).toEqual([
       { kind: 'попередження', message: 'злито: black-friday, BLACK-FRIDAY, Black-Friday' },
@@ -71,22 +71,19 @@ describe('aggregate', () => {
       [row('promo', 10000), row('PROMO', 10000), row('PROMO', 10000), row('promo', 10000)],
       [],
     );
-    expect(report.issues).toEqual([
-      { kind: 'попередження', message: 'злито: promo, PROMO' },
-    ]);
+    expect(report.issues).toEqual([{ kind: 'попередження', message: 'злито: promo, PROMO' }]);
   });
 
-  it('ROI рядка Total рахуємо від загальних сум, а не як середнє по кампаніях', () => {
+  it('Total тримає суми всіх кампаній, а не середні', () => {
     const report = aggregate(
       [row('small-win', 10000), row('big-flat', 90000)],
       [row('small-win', 30000), row('big-flat', 90000)],
     );
-    // по кампаніях: 200% і 0%, середнє дало б 100%
-    expect(report.rows.map((r) => r.roiPercent)).toEqual([0, 200]);
-    expect(report.total).toEqual({ spendMinor: 100000, revenueMinor: 120000, roiPercent: 20 });
+    // ROI по цих сумах рахує format: 20.00%, а не середнє 100.00% по кампаніях
+    expect(report.total).toEqual({ spendMinor: 100000, revenueMinor: 120000, roiDefined: true });
   });
 
-  it('Total підсумовує всі кампанії', () => {
+  it('Total підсумовує кампанії, яких немає в обох файлах', () => {
     const report = aggregate(
       [row('a', 50000), row('b', 25000)],
       [row('a', 100000), row('c', 10000)],
@@ -97,13 +94,13 @@ describe('aggregate', () => {
 
   it('ROI не визначений, коли витрати кампанії 0', () => {
     const report = aggregate([row('dormant', 0)], [row('dormant', 0)]);
-    expect(report.rows[0]?.roiPercent).toBeNull();
+    expect(report.rows[0]?.roiDefined).toBe(false);
   });
 
   it('ROI не визначений, коли сумарні витрати кампанії мінусові', () => {
     const report = aggregate([row('refund-only', -5000)], [row('refund-only', 1000)]);
     expect(report.rows).toEqual([
-      { campaign: 'refund-only', spendMinor: -5000, revenueMinor: 1000, roiPercent: null },
+      { campaign: 'refund-only', spendMinor: -5000, revenueMinor: 1000, roiDefined: false },
     ]);
   });
 
@@ -113,13 +110,13 @@ describe('aggregate', () => {
       [row('cashback-test', 20000)],
     );
     expect(report.rows).toEqual([
-      { campaign: 'cashback-test', spendMinor: 20000, revenueMinor: 20000, roiPercent: 0 },
+      { campaign: 'cashback-test', spendMinor: 20000, revenueMinor: 20000, roiDefined: true },
     ]);
   });
 
   it('ROI рядка Total не визначений, коли загальні витрати <= 0', () => {
     const report = aggregate([row('refund-only', -5000)], [row('refund-only', 100000)]);
-    expect(report.total).toEqual({ spendMinor: -5000, revenueMinor: 100000, roiPercent: null });
+    expect(report.total).toEqual({ spendMinor: -5000, revenueMinor: 100000, roiDefined: false });
   });
 
   it('сортує кампанії за назвою', () => {
@@ -127,7 +124,7 @@ describe('aggregate', () => {
       [row('winter-sale', 10000), row('black-friday', 10000), row('promo-mix', 10000)],
       [row('referral-push', 10000)],
     );
-    expect(report.rows.map((r) => r.campaign)).toEqual([
+    expect(report.rows.map((item) => item.campaign)).toEqual([
       'black-friday',
       'promo-mix',
       'referral-push',
@@ -138,7 +135,7 @@ describe('aggregate', () => {
   it('порожні входи: рядків немає, Total нульовий', () => {
     const report = aggregate([], []);
     expect(report.rows).toEqual([]);
-    expect(report.total).toEqual({ spendMinor: 0, revenueMinor: 0, roiPercent: null });
+    expect(report.total).toEqual({ spendMinor: 0, revenueMinor: 0, roiDefined: false });
     expect(report.issues).toEqual([]);
   });
 
@@ -148,10 +145,5 @@ describe('aggregate', () => {
     aggregate(spend, revenue);
     expect(spend).toEqual([row('a', 10000)]);
     expect(revenue).toEqual([row('a', 20000)]);
-  });
-
-  it('рахує дробовий ROI без округлення - округлення робить format', () => {
-    const report = aggregate([row('winter-sale', 123450)], [row('winter-sale', 200000)]);
-    expect(report.rows[0]?.roiPercent).toBeCloseTo(62.00891, 5);
   });
 });
