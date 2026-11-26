@@ -261,7 +261,7 @@ describe('formatIssuesCsv', () => {
     expect(formatIssuesCsv(emptyFileIssues)).toBe(fixture('empty-file/expected-errors.csv'));
   });
 
-  it('без проблем - порожній рядок, файл писати нічого', () => {
-    expect(formatIssuesCsv([])).toBe('');
+  it('без проблем - лише заголовок, щоб не лишити старих помилок у файлі', () => {
+    expect(formatIssuesCsv([])).toBe('file,line,type,message\n');
   });
 });

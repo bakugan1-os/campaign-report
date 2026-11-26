@@ -7,6 +7,7 @@ export type ReportFormat = 'csv' | 'md';
 const COLUMNS = ['campaign', 'spend', 'revenue', 'ROI'] as const;
 const TOTAL_LABEL = 'Total';
 const MD_ALIGNMENT = ['---', '---:', '---:', '---:'] as const;
+const ISSUE_COLUMNS = ['file', 'line', 'type', 'message'] as const;
 const ISSUE_TYPE: Record<IssueKind, string> = { помилка: 'error', попередження: 'warning' };
 
 /**
@@ -85,19 +86,22 @@ export function formatIssuesText(issues: readonly Issue[]): string {
     return `${issue.file}:${issue.line}: ${issue.message}`;
   });
 
-  // Пропущені рядки - це помилки з номером рядка. Проблема рівня файлу рядків не їсть.
-  const skipped = issues.filter(
-    (issue) => issue.kind === 'помилка' && issue.line !== undefined,
-  ).length;
+  const skipped = countSkippedRows(issues);
   if (skipped > 0) lines.push(`Пропущено рядків: ${skipped}`);
 
   return document(lines);
 }
 
-/** Звіт помилок для <out>.errors.csv. */
-export function formatIssuesCsv(issues: readonly Issue[]): string {
-  if (issues.length === 0) return '';
+/** Пропущені рядки - це помилки з номером рядка. Проблема рівня файлу рядків не їсть. */
+export function countSkippedRows(issues: readonly Issue[]): number {
+  return issues.filter((issue) => issue.kind === 'помилка' && issue.line !== undefined).length;
+}
 
+/**
+ * Звіт помилок для <out>.errors.csv. Заголовок пишемо завжди, навіть без проблем:
+ * інакше після чистого запуску поверх лишився б старий файл з неактуальними помилками.
+ */
+export function formatIssuesCsv(issues: readonly Issue[]): string {
   const lines = issues.map((issue) =>
     csvLine([
       issue.file ?? '',
@@ -107,5 +111,5 @@ export function formatIssuesCsv(issues: readonly Issue[]): string {
     ]),
   );
 
-  return document([csvLine(['file', 'line', 'type', 'message']), ...lines]);
+  return document([csvLine(ISSUE_COLUMNS), ...lines]);
 }
