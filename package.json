@@ -1,0 +1,22 @@
+{
+  "name": "campaign-report",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "campaign-report": "dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "csv-parse": "^7.0.3"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.11",
+    "typescript": "^7.0.2",
+    "vitest": "^5.1.2"
+  }
+}
