@@ -194,6 +194,41 @@ describe('parseCampaignCsv', () => {
     });
   });
 
+  it('дубль колонки суми - фатальна помилка', () => {
+    // Раніше мовчки бралась перша: campaign,spend,spend / Promo,0,100 давало 0.00.
+    const result = parseCampaignCsv('campaign,spend,spend\nPromo,0,100\n', {
+      file: 'spend.csv',
+      amountColumn: 'spend',
+    });
+    expect(result).toEqual({
+      ok: false,
+      error: { file: 'spend.csv', kind: 'помилка', message: 'колонка "spend" у заголовку двічі' },
+    });
+  });
+
+  it('дубль колонки через різний регістр теж фатальний', () => {
+    const result = parseCampaignCsv('campaign,Spend,spend\nPromo,0,100\n', {
+      file: 'spend.csv',
+      amountColumn: 'spend',
+    });
+    expect(result.ok).toBe(false);
+  });
+
+  it('дубль колонки campaign - фатальна помилка', () => {
+    const result = parseCampaignCsv('campaign,campaign,spend\nA,B,100\n', {
+      file: 'spend.csv',
+      amountColumn: 'spend',
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.message).toBe('колонка "campaign" у заголовку двічі');
+  });
+
+  it('дубль колонки, яка нам не потрібна, не чіпаємо', () => {
+    const result = rowsOf('campaign,spend,note,note\nPromo,100.00,a,b\n');
+    expect(result.rows).toEqual([{ campaign: 'Promo', amountMinor: 10000 }]);
+    expect(result.issues).toEqual([]);
+  });
+
   it('немає колонки campaign - фатальна помилка', () => {
     expect(parseCampaignCsv('name,spend\nwinter-sale,100.00\n', {
       file: 'spend.csv',

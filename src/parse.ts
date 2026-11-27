@@ -185,6 +185,16 @@ export function parseCampaignCsv(text: string, options: ParseOptions): ParseResu
     };
   }
 
+  // Дубль потрібної колонки - це не вибір "беремо першу", а невідомо який файл.
+  for (const name of ['campaign', amountColumn]) {
+    if (columns.indexOf(name) !== columns.lastIndexOf(name)) {
+      return {
+        ok: false,
+        error: { file, kind: 'помилка', message: `колонка "${name}" у заголовку двічі` },
+      };
+    }
+  }
+
   const dataRecords = records.slice(1);
   if (dataRecords.length === 0) {
     // Якщо всі рядки з даними були биті, це не "немає рядків", а звіт помилок.
