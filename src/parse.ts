@@ -1,0 +1,294 @@
+import { parse, type Info } from 'csv-parse/sync';
+import type { AmountColumn, Issue, ParsedRow } from './types.js';
+
+export type MoneyResult = { ok: true; minor: number } | { ok: false; message: string };
+
+export interface ParseOptions {
+  /** Імʼя файлу для звіту помилок. */
+  file: string;
+  amountColumn: AmountColumn;
+}
+
+export type ParseResult =
+  | { ok: true; rows: ParsedRow[]; issues: Issue[] }
+  | { ok: false; error: Issue };
+
+/** Ціла частина, необовʼязкова дробова через "." або ",". Пробіли всередині не допускаються. */
+const AMOUNT_PATTERN = /^([+-]?)(\d+)(?:[.,](\d+))?$/;
+
+/** Сума з CSV у мінорні одиниці. Округлення немає: зайві знаки - помилка. */
+export function parseMoney(raw: string): MoneyResult {
+  const text = raw.trim();
+  if (text === '') return { ok: false, message: 'порожня сума' };
+
+  const match = AMOUNT_PATTERN.exec(text);
+  if (!match) return { ok: false, message: `сума не число: "${text}"` };
+
+  const fraction = match[3] ?? '';
+  if (fraction.length > 2) {
+    return { ok: false, message: `більше 2 знаків після коми: "${text}"` };
+  }
+
+  // У колонку суми інколи потрапляє довгий ID кампанії: Number() тихо загубив би
+  // молодші цифри, а не поскаржився.
+  const whole = (match[2] ?? '0').replace(/^0+(?=\d)/, '');
+  if (whole.length + fraction.length > 15) {
+    return { ok: false, message: `сума довша за 15 цифр: "${text}"` };
+  }
+
+  const minor = Number(whole) * 100 + Number(fraction.padEnd(2, '0'));
+  // 15 цифр без копійок дають 17 цифр мінорних одиниць - це вже за межею точних цілих.
+  if (!Number.isSafeInteger(minor)) {
+    return { ok: false, message: `сума завелика для точного підрахунку: "${text}"` };
+  }
+
+  return { ok: true, minor: match[1] === '-' ? -minor : minor };
+}
+
+/**
+ * Розділювач визначаємо по заголовку: що частіше поза лапками, те й розділювач.
+ * Далі весь файл читає csv-parse.
+ */
+function sniffDelimiter(text: string): ',' | ';' {
+  let commas = 0;
+  let semicolons = 0;
+  let inQuotes = false;
+
+  for (const char of text) {
+    if (char === '"') {
+      inQuotes = !inQuotes;
+      continue;
+    }
+    if (inQuotes) continue;
+    if (char === '\n') break;
+    if (char === ',') commas += 1;
+    else if (char === ';') semicolons += 1;
+  }
+
+  return semicolons > commas ? ';' : ',';
+}
+
+interface RawRecord {
+  record: string[];
+  info: Info;
+}
+
+/**
+ * Декодуємо строго. Excel з українською локаллю зберігає CSV у Windows-1251,
+ * а нестроге читання зробило б з кирилиці ромбики і зліпило різні кампанії в одну
+ * з однаковою назвою - тобто тихо неправильні цифри без жодного попередження.
+ */
+export function decodeUtf8(
+  bytes: Uint8Array,
+): { ok: true; text: string } | { ok: false; message: string } {
+  try {
+    return { ok: true, text: new TextDecoder('utf-8', { fatal: true }).decode(bytes) };
+  } catch {
+    return { ok: false, message: 'файл не в UTF-8, збережіть як CSV UTF-8' };
+  }
+}
+
+/** Назви, під якими у вивантаженнях приходить рядок підсумку, а не кампанія. */
+const TOTAL_ROW_NAMES = new Set(['total', 'разом', 'всього', 'усього', 'итого', 'підсумок']);
+
+/** Google Ads пише підсумки як "Total: Account", "Total: Search". */
+const TOTAL_ROW_PREFIXES = ['total:', 'разом:'];
+
+function isTotalRow(campaign: string): boolean {
+  const name = campaign.toLowerCase();
+  return TOTAL_ROW_NAMES.has(name) || TOTAL_ROW_PREFIXES.some((prefix) => name.startsWith(prefix));
+}
+
+/** Коди csv-parse людською мовою. Невідомий код лишаємо в тексті для діагностики. */
+const CSV_ERROR_MESSAGES: Record<string, string> = {
+  INVALID_OPENING_QUOTE: 'лапка всередині поля без лапок',
+  CSV_QUOTE_NOT_CLOSED: 'лапка не закрита',
+  CSV_INVALID_CLOSING_QUOTE: 'лапка в полі не продубльована',
+};
+
+function csvErrorLine(error: unknown): number | undefined {
+  const lines = (error as { lines?: unknown } | null | undefined)?.lines;
+  return typeof lines === 'number' ? lines : undefined;
+}
+
+function csvErrorText(error: unknown): string {
+  const code = (error as { code?: unknown } | null | undefined)?.code;
+  if (typeof code !== 'string') return 'битий рядок CSV';
+  return CSV_ERROR_MESSAGES[code] ?? `битий рядок CSV: ${code}`;
+}
+
+/**
+ * Будь-яка помилка лапок фатальна для файлу: лапка з'їдає рядки до наступної,
+ * тому частковий звіт тихо губив би гроші. Номер рядка - де csv-parse спинився,
+ * а не де лапка відкрилась: цього він не знає.
+ */
+function csvFatalIssue(file: string, error: unknown): Issue {
+  const code = (error as { code?: unknown } | null | undefined)?.code;
+  const line = csvErrorLine(error);
+  const issue: Issue = { file, line, kind: 'помилка', message: '' };
+
+  if (typeof code === 'string' && code.includes('QUOTE')) {
+    const where = line === undefined ? '' : `, виявлено в рядку ${line}`;
+    return { ...issue, message: `помилка лапок (${csvErrorText(error)})${where}; файл не прочитано` };
+  }
+  return { ...issue, message: `не можу прочитати CSV: ${csvErrorText(error)}` };
+}
+
+/**
+ * Excel інколи пише перед таблицею рядок sep=; - тоді розділювач оголошений,
+ * а не вгаданий. Сам рядок пропускаємо через from_line, щоб номери рядків
+ * у звіті помилок лишились такими, як у файлі.
+ */
+const SEP_PREAMBLE = /^sep=([,;])\r?\n/i;
+
+function readDelimiter(body: string): { delimiter: ',' | ';'; fromLine: number } {
+  const declared = SEP_PREAMBLE.exec(body)?.[1];
+  if (declared === ',' || declared === ';') return { delimiter: declared, fromLine: 2 };
+  return { delimiter: sniffDelimiter(body), fromLine: 1 };
+}
+
+export function parseCampaignCsv(text: string, options: ParseOptions): ParseResult {
+  const { file, amountColumn } = options;
+  const body = text.replace(/^\uFEFF/, '');
+
+  if (body.trim() === '') {
+    return {
+      ok: true,
+      rows: [],
+      issues: [{ file, kind: 'попередження', message: 'порожній файл' }],
+    };
+  }
+
+  const { delimiter, fromLine } = readDelimiter(body);
+  let records: RawRecord[];
+  try {
+    records = parse(text, {
+      delimiter,
+      from_line: fromLine,
+      bom: true,
+      info: true,
+      relax_column_count: true,
+      skip_empty_lines: true,
+      // Типи csv-parse не описують info: true в режимі масивів, звідси приведення.
+    }) as unknown as RawRecord[];
+  } catch (error) {
+    return { ok: false, error: csvFatalIssue(file, error) };
+  }
+
+  const header = records[0];
+  if (!header) {
+    return {
+      ok: true,
+      rows: [],
+      issues: [{ file, kind: 'попередження', message: 'немає рядків з даними' }],
+    };
+  }
+
+  const columns = header.record.map((name) => name.trim().toLowerCase());
+  const campaignIndex = columns.indexOf('campaign');
+  if (campaignIndex === -1) {
+    return { ok: false, error: { file, kind: 'помилка', message: 'немає колонки "campaign"' } };
+  }
+  const amountIndex = columns.indexOf(amountColumn);
+  if (amountIndex === -1) {
+    return {
+      ok: false,
+      error: { file, kind: 'помилка', message: `немає колонки "${amountColumn}"` },
+    };
+  }
+
+  // Дубль потрібної колонки - це не вибір "беремо першу", а невідомо який файл.
+  for (const name of ['campaign', amountColumn]) {
+    if (columns.indexOf(name) !== columns.lastIndexOf(name)) {
+      return {
+        ok: false,
+        error: { file, kind: 'помилка', message: `колонка "${name}" у заголовку двічі` },
+      };
+    }
+  }
+
+  const dataRecords = records.slice(1);
+  if (dataRecords.length === 0) {
+    return {
+      ok: true,
+      rows: [],
+      issues: [{ file, kind: 'попередження', message: 'немає рядків з даними' }],
+    };
+  }
+
+  const rows: ParsedRow[] = [];
+  const issues: Issue[] = [];
+
+  for (const { record, info } of dataRecords) {
+    const line = info.lines;
+
+    // Деякі системи ставлять розділювач у кінці кожного рядка з даними, а в кінці
+    // заголовка ні. Порожнє поле в кінці не може бути дробом, тож це не помилка.
+    const fields = [...record];
+    while (fields.length > columns.length && (fields.at(-1) ?? '').trim() === '') fields.pop();
+
+    // Зайве поле зі значенням найчастіше означає дріб через кому у файлі з комою.
+    if (fields.length > columns.length) {
+      issues.push({
+        file,
+        line,
+        kind: 'помилка',
+        message:
+          `забагато полів: ${fields.length}, у заголовку ${columns.length}` +
+          ' (дріб через кому треба брати в лапки)',
+      });
+      continue;
+    }
+
+    if (fields.length < columns.length) {
+      issues.push({
+        file,
+        line,
+        kind: 'помилка',
+        message: `замало полів: ${fields.length}, у заголовку ${columns.length}`,
+      });
+      continue;
+    }
+
+    const campaign = (fields[campaignIndex] ?? '').trim();
+    if (campaign === '') {
+      issues.push({ file, line, kind: 'помилка', message: 'порожня назва кампанії' });
+      continue;
+    }
+
+    // Формально валідний CSV, але насправді зайва лапка склеїла кілька рядків
+    // в одну назву - решта грошей з тих рядків тихо зникла б.
+    if (/[\r\n]/.test(campaign)) {
+      return {
+        ok: false,
+        error: {
+          file,
+          line,
+          kind: 'помилка',
+          message: 'назва з переносом рядка, ймовірно зайва лапка',
+        },
+      };
+    }
+
+    // Підсумок з вивантаження не кампанія: інакше він подвоїв би загальну суму.
+    if (isTotalRow(campaign)) {
+      issues.push({
+        file,
+        line,
+        kind: 'попередження',
+        message: `пропущено рядок підсумку: "${campaign}"`,
+      });
+      continue;
+    }
+
+    const amount = parseMoney(fields[amountIndex] ?? '');
+    if (!amount.ok) {
+      issues.push({ file, line, kind: 'помилка', message: amount.message });
+      continue;
+    }
+
+    rows.push({ campaign, amountMinor: amount.minor });
+  }
+
+  return { ok: true, rows, issues };
+}

@@ -1,0 +1,3 @@
+| campaign | spend | revenue | ROI |
+| --- | ---: | ---: | ---: |
+| Total | 0.00 | 0.00 | - |
