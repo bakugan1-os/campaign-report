@@ -118,6 +118,19 @@ export function parseCampaignCsv(text: string, options: ParseOptions): ParseResu
   for (const { record, info } of dataRecords) {
     const line = info.lines;
 
+    // Зайве поле найчастіше означає дріб через кому у файлі з розділювачем кома.
+    if (record.length > columns.length) {
+      issues.push({
+        file,
+        line,
+        kind: 'помилка',
+        message:
+          `забагато полів: ${record.length}, у заголовку ${columns.length}` +
+          ' (дріб через кому треба брати в лапки)',
+      });
+      continue;
+    }
+
     if (record.length < columns.length) {
       issues.push({
         file,

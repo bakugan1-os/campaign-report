@@ -243,6 +243,25 @@ describe('parseCampaignCsv', () => {
     });
   });
 
+  it('забагато полів - помилка з підказкою про дріб через кому', () => {
+    const result = rowsOf('campaign,spend\nPromo,1,5\n');
+    expect(result.rows).toEqual([]);
+    expect(result.issues).toEqual([
+      {
+        file: 'spend.csv',
+        line: 2,
+        kind: 'помилка',
+        message: 'забагато полів: 3, у заголовку 2 (дріб через кому треба брати в лапки)',
+      },
+    ]);
+  });
+
+  it('забагато полів: назва кампанії не зсувається, коли колонка суми перша', () => {
+    const result = rowsOf('spend,campaign\n1,5,Promo\n');
+    expect(result.rows).toEqual([]);
+    expect(result.issues[0]?.message).toContain('забагато полів: 3, у заголовку 2');
+  });
+
   it('дозволяє мінусові суми в рядках', () => {
     const result = rowsOf('campaign,spend\ncashback-test,-150.00\ncashback-test,350.00\n');
     expect(result.rows).toEqual([
