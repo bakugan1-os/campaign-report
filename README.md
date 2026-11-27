@@ -2,7 +2,7 @@
 
 CLI, який зводить два CSV — витрати і доходи по кампаніях — в одну таблицю `campaign, spend, revenue, ROI` з рядком `Total`. Вихід у CSV або markdown.
 
-Битий рядок ніколи не зникає молча: він або в звіті помилок, або файл відхиляється цілком.
+Битий рядок ніколи не зникає мовчки: він або в звіті помилок, або файл відхиляється цілком.
 
 ```
 $ node dist/cli.js --spend fixtures/basic/spend.csv --revenue fixtures/basic/revenue.csv --format md
