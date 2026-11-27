@@ -61,6 +61,9 @@ interface RawRecord {
   info: Info;
 }
 
+/** Назви, під якими у вивантаженнях приходить рядок підсумку, а не кампанія. */
+const TOTAL_ROW_NAMES = new Set(['total', 'разом', 'всього', 'итого']);
+
 /** Коди csv-parse людською мовою. Невідомий код лишаємо в тексті для діагностики. */
 const CSV_ERROR_MESSAGES: Record<string, string> = {
   INVALID_OPENING_QUOTE: 'лапка всередині поля без лапок',
@@ -192,6 +195,17 @@ export function parseCampaignCsv(text: string, options: ParseOptions): ParseResu
     const campaign = (record[campaignIndex] ?? '').trim();
     if (campaign === '') {
       issues.push({ file, line, kind: 'помилка', message: 'порожня назва кампанії' });
+      continue;
+    }
+
+    // Підсумок з вивантаження не кампанія: інакше він подвоїв би загальну суму.
+    if (TOTAL_ROW_NAMES.has(campaign.toLowerCase())) {
+      issues.push({
+        file,
+        line,
+        kind: 'попередження',
+        message: `пропущено рядок підсумку: "${campaign}"`,
+      });
       continue;
     }
 

@@ -243,6 +243,49 @@ describe('parseCampaignCsv', () => {
     });
   });
 
+  it('рядок підсумку з вивантаження пропускається з попередженням', () => {
+    const result = rowsOf('campaign,spend\nPromo,100.00\nTotal,100.00\n');
+    expect(result.rows).toEqual([{ campaign: 'Promo', amountMinor: 10000 }]);
+    expect(result.issues).toEqual([
+      {
+        file: 'spend.csv',
+        line: 3,
+        kind: 'попередження',
+        message: 'пропущено рядок підсумку: "Total"',
+      },
+    ]);
+  });
+
+  it('усі варіанти підсумку, регістр і пробіли не важливі', () => {
+    const result = rowsOf(
+      'campaign,spend\nTOTAL,1.00\nРазом,1.00\nвсього,1.00\nИТОГО,1.00\n  total  ,1.00\n',
+    );
+    expect(result.rows).toEqual([]);
+    expect(result.issues.map((issue) => issue.line)).toEqual([2, 3, 4, 5, 6]);
+    expect(result.issues.every((issue) => issue.kind === 'попередження')).toBe(true);
+  });
+
+  it('назва, що лише містить total, не пропускається', () => {
+    const result = rowsOf('campaign,spend\ntotal-sale,100.00\nsubtotal,50.00\n');
+    expect(result.rows).toEqual([
+      { campaign: 'total-sale', amountMinor: 10000 },
+      { campaign: 'subtotal', amountMinor: 5000 },
+    ]);
+    expect(result.issues).toEqual([]);
+  });
+
+  it('рядок підсумку з битою сумою теж іде як підсумок, а не як не-число', () => {
+    const result = rowsOf('campaign,spend\nTotal,abc\n');
+    expect(result.issues).toEqual([
+      {
+        file: 'spend.csv',
+        line: 2,
+        kind: 'попередження',
+        message: 'пропущено рядок підсумку: "Total"',
+      },
+    ]);
+  });
+
   it('лапка всередині поля без лапок: битий рядок у звіт, решта файлу читається', () => {
     const result = rowsOf('campaign,spend\nAkcia "VIP",100\nwinter-sale,50.00\n');
     expect(result.rows).toEqual([{ campaign: 'winter-sale', amountMinor: 5000 }]);
