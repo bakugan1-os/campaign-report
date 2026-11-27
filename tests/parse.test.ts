@@ -450,6 +450,25 @@ describe('parseCampaignCsv', () => {
     if (!result.ok) expect(result.error.message).toContain('помилка лапок');
   });
 
+  it('назва з переносом рядка - фатальна помилка', () => {
+    // Формально валідний CSV, але насправді зайва лапка склеїла два рядки.
+    expect(parseSpend('campaign,spend\n"Pro\nmo",100.00\nX,50.00\n')).toEqual({
+      ok: false,
+      error: {
+        file: 'spend.csv',
+        line: 3,
+        kind: 'помилка',
+        message: 'назва з переносом рядка, ймовірно зайва лапка',
+      },
+    });
+  });
+
+  it('назва з CRLF усередині - теж фатальна', () => {
+    const result = parseSpend('campaign,spend\r\n"Pro\r\nmo",100.00\r\n');
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.message).toContain('назва з переносом рядка');
+  });
+
   it('бита лапка в заголовку не маскується під "немає колонки campaign"', () => {
     const result = parseSpend('campaign,sp"end"\nPromo,100\n');
     expect(result.ok).toBe(false);

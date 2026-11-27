@@ -248,6 +248,20 @@ export function parseCampaignCsv(text: string, options: ParseOptions): ParseResu
       continue;
     }
 
+    // Формально валідний CSV, але насправді зайва лапка склеїла кілька рядків
+    // в одну назву - решта грошей з тих рядків тихо зникла б.
+    if (/[\r\n]/.test(campaign)) {
+      return {
+        ok: false,
+        error: {
+          file,
+          line,
+          kind: 'помилка',
+          message: 'назва з переносом рядка, ймовірно зайва лапка',
+        },
+      };
+    }
+
     // Підсумок з вивантаження не кампанія: інакше він подвоїв би загальну суму.
     if (TOTAL_ROW_NAMES.has(campaign.toLowerCase())) {
       issues.push({
