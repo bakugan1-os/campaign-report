@@ -110,6 +110,23 @@ function csvErrorText(error: unknown): string {
 }
 
 /**
+ * Будь-яка помилка лапок фатальна для файлу: лапка з'їдає рядки до наступної,
+ * тому частковий звіт тихо губив би гроші. Номер рядка - де csv-parse спинився,
+ * а не де лапка відкрилась: цього він не знає.
+ */
+function csvFatalIssue(file: string, error: unknown): Issue {
+  const code = (error as { code?: unknown } | null | undefined)?.code;
+  const line = csvErrorLine(error);
+  const issue: Issue = { file, line, kind: 'помилка', message: '' };
+
+  if (typeof code === 'string' && code.includes('QUOTE')) {
+    const where = line === undefined ? '' : `, виявлено в рядку ${line}`;
+    return { ...issue, message: `помилка лапок (${csvErrorText(error)})${where}; файл не прочитано` };
+  }
+  return { ...issue, message: `не можу прочитати CSV: ${csvErrorText(error)}` };
+}
+
+/**
  * Excel інколи пише перед таблицею рядок sep=; - тоді розділювач оголошений,
  * а не вгаданий. Сам рядок пропускаємо через from_line, щоб номери рядків
  * у звіті помилок лишились такими, як у файлі.
@@ -134,11 +151,6 @@ export function parseCampaignCsv(text: string, options: ParseOptions): ParseResu
     };
   }
 
-  // Биті лапки не повинні валити запуск: csv-parse пропускає такий запис,
-  // ми кладемо його в звіт помилок і читаємо файл далі.
-  const broken: Issue[] = [];
-  // Незакрита лапка з'їдає файл до кінця - далі читати нічого, це фатально.
-  let quoteNotClosed = false;
   const { delimiter, fromLine } = readDelimiter(body);
   let records: RawRecord[];
   try {
@@ -149,46 +161,10 @@ export function parseCampaignCsv(text: string, options: ParseOptions): ParseResu
       info: true,
       relax_column_count: true,
       skip_empty_lines: true,
-      skip_records_with_error: true,
-      on_skip: (error) => {
-        if ((error as { code?: unknown } | null | undefined)?.code === 'CSV_QUOTE_NOT_CLOSED') {
-          quoteNotClosed = true;
-          return undefined;
-        }
-        const issue: Issue = {
-          file,
-          line: csvErrorLine(error),
-          kind: 'помилка',
-          message: csvErrorText(error),
-        };
-        // csv-parse інколи скаржиться на той самий запис двічі.
-        const last = broken.at(-1);
-        const repeat =
-          last !== undefined && last.line === issue.line && last.message === issue.message;
-        if (!repeat) broken.push(issue);
-        return undefined;
-      },
       // Типи csv-parse не описують info: true в режимі масивів, звідси приведення.
     }) as unknown as RawRecord[];
   } catch (error) {
-    return {
-      ok: false,
-      error: { file, kind: 'помилка', message: `не можу прочитати CSV: ${csvErrorText(error)}` },
-    };
-  }
-
-  if (quoteNotClosed) {
-    // Рядок обриву не кажемо: він у кінці файлу. Кажемо, де лапка відкрилась.
-    const lastGoodLine = records.at(-1)?.info.lines ?? 0;
-    return {
-      ok: false,
-      error: {
-        file,
-        line: lastGoodLine + 1,
-        kind: 'помилка',
-        message: 'лапка не закрита, файл далі не читається',
-      },
-    };
+    return { ok: false, error: csvFatalIssue(file, error) };
   }
 
   const header = records[0];
@@ -225,14 +201,10 @@ export function parseCampaignCsv(text: string, options: ParseOptions): ParseResu
 
   const dataRecords = records.slice(1);
   if (dataRecords.length === 0) {
-    // Якщо всі рядки з даними були биті, це не "немає рядків", а звіт помилок.
     return {
       ok: true,
       rows: [],
-      issues:
-        broken.length > 0
-          ? broken
-          : [{ file, kind: 'попередження', message: 'немає рядків з даними' }],
+      issues: [{ file, kind: 'попередження', message: 'немає рядків з даними' }],
     };
   }
 
@@ -296,10 +268,5 @@ export function parseCampaignCsv(text: string, options: ParseOptions): ParseResu
     rows.push({ campaign, amountMinor: amount.minor });
   }
 
-  return { ok: true, rows, issues: sortByLine([...broken, ...issues]) };
-}
-
-/** Проблеми в порядку рядків файлу: биті записи приходять від csv-parse окремо від решти. */
-function sortByLine(issues: readonly Issue[]): Issue[] {
-  return [...issues].sort((first, second) => (first.line ?? 0) - (second.line ?? 0));
+  return { ok: true, rows, issues };
 }

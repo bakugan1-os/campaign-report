@@ -403,57 +403,66 @@ describe('parseCampaignCsv', () => {
     ]);
   });
 
-  it('лапка всередині поля без лапок: битий рядок у звіт, решта файлу читається', () => {
-    const result = rowsOf('campaign,spend\nAkcia "VIP",100\nwinter-sale,50.00\n');
-    expect(result.rows).toEqual([{ campaign: 'winter-sale', amountMinor: 5000 }]);
-    expect(result.issues).toEqual([
-      { file: 'spend.csv', line: 2, kind: 'помилка', message: 'лапка всередині поля без лапок' },
-    ]);
-  });
+  const parseSpend = (text: string) =>
+    parseCampaignCsv(text, { file: 'spend.csv', amountColumn: 'spend' });
 
-  it('незакрита лапка - фатальна для файлу, з рядком, де лапка відкрилась', () => {
-    // Лапка з'їдає рядки 3-5, тому звіт будувався б з частини даних.
-    const result = parseCampaignCsv('campaign,spend\na,1.00\n"Promo,100\nb,2.00\nc,3.00\n', {
-      file: 'spend.csv',
-      amountColumn: 'spend',
-    });
-    expect(result).toEqual({
+  it('лапка всередині поля без лапок - фатальна помилка лапок', () => {
+    expect(parseSpend('campaign,spend\nAkcia "VIP",100\nwinter-sale,50.00\n')).toEqual({
       ok: false,
       error: {
         file: 'spend.csv',
-        line: 3,
+        line: 2,
         kind: 'помилка',
-        message: 'лапка не закрита, файл далі не читається',
+        message:
+          'помилка лапок (лапка всередині поля без лапок), виявлено в рядку 2; файл не прочитано',
       },
     });
   });
 
-  it('незакрита лапка в першому ж рядку даних', () => {
-    const result = parseCampaignCsv('campaign,spend\n"Promo,100\n', {
-      file: 'spend.csv',
-      amountColumn: 'spend',
+  it('незакрита лапка: рядок виявлення, без обіцянки де вона відкрилась', () => {
+    // Лапка з'їдає все до кінця файлу, тому csv-parse спиняється на рядку 4.
+    const result = parseSpend('campaign,spend\nwinter,50\n"Promo,100\nblack,10\n');
+    expect(result).toEqual({
+      ok: false,
+      error: {
+        file: 'spend.csv',
+        line: 4,
+        kind: 'помилка',
+        message: 'помилка лапок (лапка не закрита), виявлено в рядку 4; файл не прочитано',
+      },
     });
+  });
+
+  it('сміття після закритої лапки - фатальна помилка лапок', () => {
+    const result = parseSpend('campaign,spend\n"Akcia"x,100\n');
     expect(result.ok).toBe(false);
-    if (!result.ok) expect(result.error.line).toBe(2);
+    if (!result.ok) {
+      expect(result.error.message).toBe(
+        'помилка лапок (лапка в полі не продубльована), виявлено в рядку 2; файл не прочитано',
+      );
+    }
   });
 
-  it('пробіл перед лапкою не валить запуск', () => {
-    const result = rowsOf('campaign;spend\nPromo; "100,5"\nwinter-sale;50,00\n');
-    expect(result.rows).toEqual([{ campaign: 'winter-sale', amountMinor: 5000 }]);
-    expect(result.issues).toEqual([
-      { file: 'spend.csv', line: 2, kind: 'помилка', message: 'лапка всередині поля без лапок' },
-    ]);
+  it('зайва лапка, що зʼїдає кілька рядків, не дає часткового звіту', () => {
+    // Раніше звіт містив лише Last,10.00, а 180 тихо зникали.
+    const result = parseSpend('campaign,spend\n"Akcia,100\nPromo,50\n"Other",30\nLast,10\n');
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.message).toContain('помилка лапок');
   });
 
-  it('не дублює помилку, коли csv-parse скаржиться на рядок двічі', () => {
-    const result = rowsOf('campaign,spend\nAkcia "VIP",100\n');
-    expect(result.issues).toHaveLength(1);
+  it('бита лапка в заголовку не маскується під "немає колонки campaign"', () => {
+    const result = parseSpend('campaign,sp"end"\nPromo,100\n');
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.line).toBe(1);
+      expect(result.error.message).toContain('помилка лапок');
+    }
   });
 
-  it('биті лапки і биті суми лишаються в порядку рядків', () => {
-    const result = rowsOf('campaign,spend\nA,abc\nB "x",100\nC,50.00\n');
-    expect(result.rows).toEqual([{ campaign: 'C', amountMinor: 5000 }]);
-    expect(result.issues.map((issue) => issue.line)).toEqual([2, 3]);
+  it('пробіл перед лапкою - фатальна помилка лапок', () => {
+    const result = parseSpend('campaign;spend\nPromo; "100,5"\nwinter-sale;50,00\n');
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.message).toContain('помилка лапок');
   });
 
   it('порожнє зайве поле в кінці рядка - не помилка', () => {

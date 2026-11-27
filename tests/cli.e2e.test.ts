@@ -129,20 +129,21 @@ describe('e2e --out', () => {
 });
 
 describe('e2e битий CSV', () => {
-  it('лапка в полі не валить запуск і не друкує stack trace', () => {
+  it('лапка в полі: exit 1 без stack trace, звіту немає', () => {
     const spend = join(workDir, 'quote-spend.csv');
     const revenue = join(workDir, 'quote-revenue.csv');
     writeFileSync(spend, 'campaign,spend\nAkcia "VIP",100\nwinter-sale,50.00\n', 'utf8');
     writeFileSync(revenue, 'campaign,revenue\nwinter-sale,100.00\n', 'utf8');
 
     const result = run(['--spend', spend, '--revenue', revenue, '--format', 'csv']);
-    expect(result.status).toBe(0);
+    expect(result.status).toBe(1);
+    expect(result.stdout).toBe('');
     expect(result.stderr).not.toContain('at ');
     expect(result.stderr).not.toContain('CsvError');
     expect(result.stderr).toBe(
-      'quote-spend.csv:2: лапка всередині поля без лапок\nПропущено рядків: 1\n',
+      'quote-spend.csv:2: помилка лапок (лапка всередині поля без лапок),' +
+        ' виявлено в рядку 2; файл не прочитано\n',
     );
-    expect(result.stdout).toContain('winter-sale,50.00,100.00,100.00%');
   });
 
   it('незакрита лапка: exit 1, без звіту і без errors.csv', () => {
@@ -160,10 +161,23 @@ describe('e2e битий CSV', () => {
     expect(result.status).toBe(1);
     expect(result.stdout).toBe('');
     expect(result.stderr).toBe(
-      'unclosed-spend.csv:3: лапка не закрита, файл далі не читається\n',
+      'unclosed-spend.csv:4: помилка лапок (лапка не закрита),' +
+        ' виявлено в рядку 4; файл не прочитано\n',
     );
     expect(existsSync(out)).toBe(false);
     expect(existsSync(`${out}.errors.csv`)).toBe(false);
+  });
+
+  it('зайва лапка не дає часткового звіту з тихо втраченими грошима', () => {
+    const spend = join(workDir, 'swallow-spend.csv');
+    const revenue = join(workDir, 'swallow-revenue.csv');
+    writeFileSync(spend, 'campaign,spend\n"Akcia,100\nPromo,50\n"Other",30\nLast,10\n', 'utf8');
+    writeFileSync(revenue, 'campaign,revenue\nLast,100.00\n', 'utf8');
+
+    const result = run(['--spend', spend, '--revenue', revenue, '--format', 'csv']);
+    expect(result.status).toBe(1);
+    expect(result.stdout).toBe('');
+    expect(result.stderr).toContain('помилка лапок');
   });
 });
 
