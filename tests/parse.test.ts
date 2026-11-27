@@ -375,18 +375,41 @@ describe('parseCampaignCsv', () => {
 
   it('усі варіанти підсумку, регістр і пробіли не важливі', () => {
     const result = rowsOf(
-      'campaign,spend\nTOTAL,1.00\nРазом,1.00\nвсього,1.00\nИТОГО,1.00\n  total  ,1.00\n',
+      'campaign,spend\nTOTAL,1.00\nРазом,1.00\nвсього,1.00\nУсього,1.00\nИТОГО,1.00\n' +
+        'Підсумок,1.00\n  total  ,1.00\n',
     );
     expect(result.rows).toEqual([]);
-    expect(result.issues.map((issue) => issue.line)).toEqual([2, 3, 4, 5, 6]);
+    expect(result.issues.map((issue) => issue.line)).toEqual([2, 3, 4, 5, 6, 7, 8]);
     expect(result.issues.every((issue) => issue.kind === 'попередження')).toBe(true);
   });
 
+  it('підсумки Google Ads з двокрапкою', () => {
+    const result = rowsOf(
+      'campaign,spend\nTotal: Account,100.00\nTotal: Search,50.00\nРазом: пошук,20.00\n',
+    );
+    expect(result.rows).toEqual([]);
+    expect(result.issues).toHaveLength(3);
+    expect(result.issues[0]?.message).toBe('пропущено рядок підсумку: "Total: Account"');
+  });
+
   it('назва, що лише містить total, не пропускається', () => {
-    const result = rowsOf('campaign,spend\ntotal-sale,100.00\nsubtotal,50.00\n');
+    const result = rowsOf(
+      'campaign,spend\ntotal-sale,100.00\nsubtotal,50.00\ntotals,10.00\nразом з усіма,5.00\n',
+    );
     expect(result.rows).toEqual([
       { campaign: 'total-sale', amountMinor: 10000 },
       { campaign: 'subtotal', amountMinor: 5000 },
+      { campaign: 'totals', amountMinor: 1000 },
+      { campaign: 'разом з усіма', amountMinor: 500 },
+    ]);
+    expect(result.issues).toEqual([]);
+  });
+
+  it('префікс підсумку працює лише на початку назви', () => {
+    const result = rowsOf('campaign,spend\nreport total: winter,100.00\nбюджет разом: all,50.00\n');
+    expect(result.rows).toEqual([
+      { campaign: 'report total: winter', amountMinor: 10000 },
+      { campaign: 'бюджет разом: all', amountMinor: 5000 },
     ]);
     expect(result.issues).toEqual([]);
   });

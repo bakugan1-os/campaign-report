@@ -89,7 +89,15 @@ export function decodeUtf8(
 }
 
 /** Назви, під якими у вивантаженнях приходить рядок підсумку, а не кампанія. */
-const TOTAL_ROW_NAMES = new Set(['total', 'разом', 'всього', 'итого']);
+const TOTAL_ROW_NAMES = new Set(['total', 'разом', 'всього', 'усього', 'итого', 'підсумок']);
+
+/** Google Ads пише підсумки як "Total: Account", "Total: Search". */
+const TOTAL_ROW_PREFIXES = ['total:', 'разом:'];
+
+function isTotalRow(campaign: string): boolean {
+  const name = campaign.toLowerCase();
+  return TOTAL_ROW_NAMES.has(name) || TOTAL_ROW_PREFIXES.some((prefix) => name.startsWith(prefix));
+}
 
 /** Коди csv-parse людською мовою. Невідомий код лишаємо в тексті для діагностики. */
 const CSV_ERROR_MESSAGES: Record<string, string> = {
@@ -263,7 +271,7 @@ export function parseCampaignCsv(text: string, options: ParseOptions): ParseResu
     }
 
     // Підсумок з вивантаження не кампанія: інакше він подвоїв би загальну суму.
-    if (TOTAL_ROW_NAMES.has(campaign.toLowerCase())) {
+    if (isTotalRow(campaign)) {
       issues.push({
         file,
         line,
