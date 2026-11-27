@@ -205,6 +205,47 @@ describe('formatReport', () => {
   });
 });
 
+const oneRowReport = (campaign: string): Report => ({
+  rows: [{ campaign, spendMinor: 10000, revenueMinor: 10000, roiDefined: true }],
+  total: { spendMinor: 10000, revenueMinor: 10000, roiDefined: true },
+  issues: [],
+});
+
+describe("csv-ін'єкція", () => {
+  it('назва, що починається з = + @ або -, префіксується апострофом', () => {
+    for (const name of ['=1+1', '+1', '@SUM(A1)', '-1+1']) {
+      const line = formatReport(oneRowReport(name), 'csv').split('\n')[1];
+      expect(line).toBe(`'${name},100.00,100.00,0.00%`);
+    }
+  });
+
+  it('суми і ROI не префіксуються, хоч і починаються з мінуса', () => {
+    const report: Report = {
+      rows: [{ campaign: 'refund-only', spendMinor: -5000, revenueMinor: 1000, roiDefined: false }],
+      total: { spendMinor: -5000, revenueMinor: 1000, roiDefined: false },
+      issues: [],
+    };
+    expect(formatReport(report, 'csv').split('\n')[1]).toBe('refund-only,-50.00,10.00,-');
+  });
+
+  it('префікс не ламає лапкування', () => {
+    const line = formatReport(oneRowReport('=1,2'), 'csv').split('\n')[1];
+    expect(line).toBe(`"'=1,2",100.00,100.00,0.00%`);
+  });
+
+  it('md не префіксує - там формул немає', () => {
+    expect(formatReport(oneRowReport('=1+1'), 'md').split('\n')[2]).toBe(
+      '| =1+1 | 100.00 | 100.00 | 0.00% |',
+    );
+  });
+
+  it('звичайні назви лишаються без змін', () => {
+    expect(formatReport(oneRowReport('winter-sale'), 'csv').split('\n')[1]).toBe(
+      'winter-sale,100.00,100.00,0.00%',
+    );
+  });
+});
+
 const brokenRowsIssues: Issue[] = [
   { file: 'spend.csv', line: 3, kind: 'помилка', message: 'порожня сума' },
   { file: 'spend.csv', line: 4, kind: 'помилка', message: 'сума не число: "abc"' },

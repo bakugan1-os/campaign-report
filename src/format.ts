@@ -48,6 +48,15 @@ function csvField(value: string): string {
   return /[",\r\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
 }
 
+/**
+ * Excel виконує клітинку, що починається з = + @ або -, як формулу.
+ * Префікс апострофом лишає її текстом. Тільки для назв: суми й ROI чіпати не можна,
+ * інакше "-50.00" перетвориться на "'-50.00".
+ */
+function csvSafeName(name: string): string {
+  return /^[=+@-]/.test(name) ? `'${name}` : name;
+}
+
 function csvLine(fields: readonly string[]): string {
   return fields.map(csvField).join(',');
 }
@@ -71,7 +80,8 @@ export function formatReport(report: Report, format: ReportFormat): string {
   ];
 
   if (format === 'csv') {
-    return document([csvLine(COLUMNS), ...body.map(csvLine)]);
+    const safe = body.map(([name, ...rest]) => [csvSafeName(name ?? ''), ...rest]);
+    return document([csvLine(COLUMNS), ...safe.map(csvLine)]);
   }
   return document([mdLine(COLUMNS), `| ${MD_ALIGNMENT.join(' | ')} |`, ...body.map(mdLine)]);
 }
