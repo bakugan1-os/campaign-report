@@ -61,6 +61,24 @@ interface RawRecord {
   info: Info;
 }
 
+/** Коди csv-parse людською мовою. Невідомий код лишаємо в тексті для діагностики. */
+const CSV_ERROR_MESSAGES: Record<string, string> = {
+  INVALID_OPENING_QUOTE: 'лапка всередині поля без лапок',
+  CSV_QUOTE_NOT_CLOSED: 'лапка не закрита',
+  CSV_INVALID_CLOSING_QUOTE: 'лапка в полі не продубльована',
+};
+
+function csvErrorLine(error: unknown): number | undefined {
+  const lines = (error as { lines?: unknown } | null | undefined)?.lines;
+  return typeof lines === 'number' ? lines : undefined;
+}
+
+function csvErrorText(error: unknown): string {
+  const code = (error as { code?: unknown } | null | undefined)?.code;
+  if (typeof code !== 'string') return 'битий рядок CSV';
+  return CSV_ERROR_MESSAGES[code] ?? `битий рядок CSV: ${code}`;
+}
+
 export function parseCampaignCsv(text: string, options: ParseOptions): ParseResult {
   const { file, amountColumn } = options;
 
@@ -72,14 +90,40 @@ export function parseCampaignCsv(text: string, options: ParseOptions): ParseResu
     };
   }
 
-  const records = parse(text, {
-    delimiter: sniffDelimiter(text),
-    bom: true,
-    info: true,
-    relax_column_count: true,
-    skip_empty_lines: true,
-    // Типи csv-parse не описують info: true в режимі масивів, звідси приведення.
-  }) as unknown as RawRecord[];
+  // Биті лапки не повинні валити запуск: csv-parse пропускає такий запис,
+  // ми кладемо його в звіт помилок і читаємо файл далі.
+  const broken: Issue[] = [];
+  let records: RawRecord[];
+  try {
+    records = parse(text, {
+      delimiter: sniffDelimiter(text),
+      bom: true,
+      info: true,
+      relax_column_count: true,
+      skip_empty_lines: true,
+      skip_records_with_error: true,
+      on_skip: (error) => {
+        const issue: Issue = {
+          file,
+          line: csvErrorLine(error),
+          kind: 'помилка',
+          message: csvErrorText(error),
+        };
+        // csv-parse інколи скаржиться на той самий запис двічі.
+        const last = broken.at(-1);
+        const repeat =
+          last !== undefined && last.line === issue.line && last.message === issue.message;
+        if (!repeat) broken.push(issue);
+        return undefined;
+      },
+      // Типи csv-parse не описують info: true в режимі масивів, звідси приведення.
+    }) as unknown as RawRecord[];
+  } catch (error) {
+    return {
+      ok: false,
+      error: { file, kind: 'помилка', message: `не можу прочитати CSV: ${csvErrorText(error)}` },
+    };
+  }
 
   const header = records[0];
   if (!header) {
@@ -105,10 +149,14 @@ export function parseCampaignCsv(text: string, options: ParseOptions): ParseResu
 
   const dataRecords = records.slice(1);
   if (dataRecords.length === 0) {
+    // Якщо всі рядки з даними були биті, це не "немає рядків", а звіт помилок.
     return {
       ok: true,
       rows: [],
-      issues: [{ file, kind: 'попередження', message: 'немає рядків з даними' }],
+      issues:
+        broken.length > 0
+          ? broken
+          : [{ file, kind: 'попередження', message: 'немає рядків з даними' }],
     };
   }
 
@@ -156,5 +204,10 @@ export function parseCampaignCsv(text: string, options: ParseOptions): ParseResu
     rows.push({ campaign, amountMinor: amount.minor });
   }
 
-  return { ok: true, rows, issues };
+  return { ok: true, rows, issues: sortByLine([...broken, ...issues]) };
+}
+
+/** Проблеми в порядку рядків файлу: биті записи приходять від csv-parse окремо від решти. */
+function sortByLine(issues: readonly Issue[]): Issue[] {
+  return [...issues].sort((first, second) => (first.line ?? 0) - (second.line ?? 0));
 }

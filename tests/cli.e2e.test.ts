@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
@@ -125,6 +125,24 @@ describe('e2e --out', () => {
     expect(result.status).toBe(0);
     expect(read(`${out}.errors.csv`)).toBe(read('fixtures/duplicates/expected-errors.csv'));
     expect(result.stderr).toContain('Пропущено рядків: 0');
+  });
+});
+
+describe('e2e битий CSV', () => {
+  it('лапка в полі не валить запуск і не друкує stack trace', () => {
+    const spend = join(workDir, 'quote-spend.csv');
+    const revenue = join(workDir, 'quote-revenue.csv');
+    writeFileSync(spend, 'campaign,spend\nAkcia "VIP",100\nwinter-sale,50.00\n', 'utf8');
+    writeFileSync(revenue, 'campaign,revenue\nwinter-sale,100.00\n', 'utf8');
+
+    const result = run(['--spend', spend, '--revenue', revenue, '--format', 'csv']);
+    expect(result.status).toBe(0);
+    expect(result.stderr).not.toContain('at ');
+    expect(result.stderr).not.toContain('CsvError');
+    expect(result.stderr).toBe(
+      'quote-spend.csv:2: лапка всередині поля без лапок\nПропущено рядків: 1\n',
+    );
+    expect(result.stdout).toContain('winter-sale,50.00,100.00,100.00%');
   });
 });
 

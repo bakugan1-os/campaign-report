@@ -243,6 +243,50 @@ describe('parseCampaignCsv', () => {
     });
   });
 
+  it('лапка всередині поля без лапок: битий рядок у звіт, решта файлу читається', () => {
+    const result = rowsOf('campaign,spend\nAkcia "VIP",100\nwinter-sale,50.00\n');
+    expect(result.rows).toEqual([{ campaign: 'winter-sale', amountMinor: 5000 }]);
+    expect(result.issues).toEqual([
+      { file: 'spend.csv', line: 2, kind: 'помилка', message: 'лапка всередині поля без лапок' },
+    ]);
+  });
+
+  it('незакрита лапка не валить запуск', () => {
+    const result = rowsOf('campaign,spend\n"Promo,100\n');
+    expect(result.rows).toEqual([]);
+    // Незакрита лапка з'їдає файл до кінця, тому номер рядка - там, де обірвалось.
+    expect(result.issues).toEqual([
+      { file: 'spend.csv', line: 2, kind: 'помилка', message: 'лапка не закрита' },
+    ]);
+  });
+
+  it('незакрита лапка не з\'їдає рядки до себе', () => {
+    const result = rowsOf('campaign,spend\nwinter-sale,50.00\n"Promo,100\n');
+    expect(result.rows).toEqual([{ campaign: 'winter-sale', amountMinor: 5000 }]);
+    expect(result.issues).toEqual([
+      { file: 'spend.csv', line: 3, kind: 'помилка', message: 'лапка не закрита' },
+    ]);
+  });
+
+  it('пробіл перед лапкою не валить запуск', () => {
+    const result = rowsOf('campaign;spend\nPromo; "100,5"\nwinter-sale;50,00\n');
+    expect(result.rows).toEqual([{ campaign: 'winter-sale', amountMinor: 5000 }]);
+    expect(result.issues).toEqual([
+      { file: 'spend.csv', line: 2, kind: 'помилка', message: 'лапка всередині поля без лапок' },
+    ]);
+  });
+
+  it('не дублює помилку, коли csv-parse скаржиться на рядок двічі', () => {
+    const result = rowsOf('campaign,spend\nAkcia "VIP",100\n');
+    expect(result.issues).toHaveLength(1);
+  });
+
+  it('биті лапки і биті суми лишаються в порядку рядків', () => {
+    const result = rowsOf('campaign,spend\nA,abc\nB "x",100\nC,50.00\n');
+    expect(result.rows).toEqual([{ campaign: 'C', amountMinor: 5000 }]);
+    expect(result.issues.map((issue) => issue.line)).toEqual([2, 3]);
+  });
+
   it('забагато полів - помилка з підказкою про дріб через кому', () => {
     const result = rowsOf('campaign,spend\nPromo,1,5\n');
     expect(result.rows).toEqual([]);
