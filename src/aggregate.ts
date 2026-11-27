@@ -38,7 +38,7 @@ function cleanName(name: string): string {
 }
 
 function mergeKey(name: string): string {
-  return cleanName(name).replace(/[\u02BC\u2019]/g, "'").toLowerCase();
+  return cleanName(name).replace(/[\u0060\u02BC\u2018\u2019]/g, "'").toLowerCase();
 }
 
 /**

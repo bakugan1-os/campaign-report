@@ -96,6 +96,13 @@ describe('aggregate', () => {
     expect(aggregate([row('Пʼятниця', 10000)], [row('П’ятниця', 30000)]).rows).toHaveLength(1);
   });
 
+  it('апострофи ` і ‘ теж зливаються', () => {
+    expect(aggregate([row('П`ятниця', 10000)], [row("П'ятниця", 30000)]).rows).toHaveLength(1);
+    expect(aggregate([row('П‘ятниця', 10000)], [row("П'ятниця", 30000)]).rows).toHaveLength(1);
+    expect(aggregate([row('П`ятниця', 10000)], [row('Пʼятниця', 30000)]).rows).toHaveLength(1);
+    expect(aggregate([row('П‘ятниця', 10000)], [row('П’ятниця', 30000)]).rows).toHaveLength(1);
+  });
+
   it('NFD і NFC - одна кампанія', () => {
     const report = aggregate(
       [row('Йога'.normalize('NFD'), 10000)],
