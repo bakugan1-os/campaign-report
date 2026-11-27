@@ -61,6 +61,21 @@ interface RawRecord {
   info: Info;
 }
 
+/**
+ * Декодуємо строго. Excel з українською локаллю зберігає CSV у Windows-1251,
+ * а нестроге читання зробило б з кирилиці ромбики і зліпило різні кампанії в одну
+ * з однаковою назвою - тобто тихо неправильні цифри без жодного попередження.
+ */
+export function decodeUtf8(
+  bytes: Uint8Array,
+): { ok: true; text: string } | { ok: false; message: string } {
+  try {
+    return { ok: true, text: new TextDecoder('utf-8', { fatal: true }).decode(bytes) };
+  } catch {
+    return { ok: false, message: 'файл не в UTF-8, збережіть як CSV UTF-8' };
+  }
+}
+
 /** Назви, під якими у вивантаженнях приходить рядок підсумку, а не кампанія. */
 const TOTAL_ROW_NAMES = new Set(['total', 'разом', 'всього', 'итого']);
 

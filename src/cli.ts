@@ -10,7 +10,7 @@ import {
   formatReport,
   type ReportFormat,
 } from './format.js';
-import { parseCampaignCsv } from './parse.js';
+import { decodeUtf8, parseCampaignCsv } from './parse.js';
 import type { Issue } from './types.js';
 
 const USAGE =
@@ -67,11 +67,16 @@ function parseArgs(argv: readonly string[]): Args {
 }
 
 function readFile(path: string): string {
+  let bytes: Buffer;
   try {
-    return readFileSync(path, 'utf8');
+    bytes = readFileSync(path);
   } catch {
     return fail(`не можу прочитати файл: ${path}`);
   }
+
+  const decoded = decodeUtf8(bytes);
+  if (!decoded.ok) return fail(`${basename(path)}: ${decoded.message}`);
+  return decoded.text;
 }
 
 function writeFile(path: string, content: string): void {

@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { parseCampaignCsv, parseMoney } from '../src/parse.js';
+import { decodeUtf8, parseCampaignCsv, parseMoney } from '../src/parse.js';
 
 function rowsOf(text: string, amountColumn: 'spend' | 'revenue' = 'spend') {
   const result = parseCampaignCsv(text, { file: 'spend.csv', amountColumn });
@@ -57,6 +57,32 @@ describe('parseMoney', () => {
       ok: false,
       message: 'більше 2 знаків після коми: "10.555"',
     });
+  });
+});
+
+describe('decodeUtf8', () => {
+  it('читає UTF-8 з кирилицею', () => {
+    expect(decodeUtf8(new TextEncoder().encode('Акція,100'))).toEqual({
+      ok: true,
+      text: 'Акція,100',
+    });
+  });
+
+  it('не-UTF-8 (Windows-1251) - помилка, а не ромбики', () => {
+    // "Акція" у cp1251: з fatal: false вийшло б "?????" і дві кампанії злились би в одну.
+    const cp1251 = new Uint8Array([0xc0, 0xea, 0xf6, 0xb3, 0xff]);
+    expect(decodeUtf8(cp1251)).toEqual({
+      ok: false,
+      message: 'файл не в UTF-8, збережіть як CSV UTF-8',
+    });
+  });
+
+  it('зрізає BOM', () => {
+    expect(decodeUtf8(new Uint8Array([0xef, 0xbb, 0xbf, 0x61]))).toEqual({ ok: true, text: 'a' });
+  });
+
+  it('порожній файл - порожній текст', () => {
+    expect(decodeUtf8(new Uint8Array([]))).toEqual({ ok: true, text: '' });
   });
 });
 

@@ -167,6 +167,27 @@ describe('e2e битий CSV', () => {
   });
 });
 
+describe('e2e кодування', () => {
+  it('файл не в UTF-8: exit 1 з підказкою, без ромбиків у звіті', () => {
+    const spend = join(workDir, 'cp1251-spend.csv');
+    const revenue = join(workDir, 'cp1251-revenue.csv');
+    writeFileSync(
+      spend,
+      Buffer.concat([
+        Buffer.from('campaign,spend\n'),
+        Buffer.from([0xc0, 0xea, 0xf6, 0xb3, 0xff]),
+        Buffer.from(',100\n'),
+      ]),
+    );
+    writeFileSync(revenue, 'campaign,revenue\nPromo,200.00\n', 'utf8');
+
+    const result = run(['--spend', spend, '--revenue', revenue, '--format', 'csv']);
+    expect(result.status).toBe(1);
+    expect(result.stdout).toBe('');
+    expect(result.stderr).toBe('cp1251-spend.csv: файл не в UTF-8, збережіть як CSV UTF-8\n');
+  });
+});
+
 describe('e2e аргументи', () => {
   it('немає файлу - код 1', () => {
     const result = run([
