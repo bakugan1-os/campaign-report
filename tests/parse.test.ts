@@ -456,6 +456,34 @@ describe('parseCampaignCsv', () => {
     expect(result.issues.map((issue) => issue.line)).toEqual([2, 3]);
   });
 
+  it('порожнє зайве поле в кінці рядка - не помилка', () => {
+    // Деякі системи ставлять розділювач у кінці кожного рядка з даними.
+    const result = rowsOf('campaign,spend\nPromo,100.00,\nOther,50.00,\n');
+    expect(result.rows).toEqual([
+      { campaign: 'Promo', amountMinor: 10000 },
+      { campaign: 'Other', amountMinor: 5000 },
+    ]);
+    expect(result.issues).toEqual([]);
+  });
+
+  it('кілька порожніх зайвих полів у кінці - не помилка', () => {
+    const result = rowsOf('campaign,spend\nPromo,100.00,,,\n');
+    expect(result.rows).toEqual([{ campaign: 'Promo', amountMinor: 10000 }]);
+    expect(result.issues).toEqual([]);
+  });
+
+  it('порожнє зайве поле з пробілами теж не помилка', () => {
+    const result = rowsOf('campaign;spend\nPromo;100,00;   \n');
+    expect(result.rows).toEqual([{ campaign: 'Promo', amountMinor: 10000 }]);
+    expect(result.issues).toEqual([]);
+  });
+
+  it('зайве непорожнє поле після порожнього - помилка', () => {
+    const result = rowsOf('campaign,spend\nPromo,100.00,,x\n');
+    expect(result.rows).toEqual([]);
+    expect(result.issues[0]?.message).toContain('забагато полів');
+  });
+
   it('забагато полів - помилка з підказкою про дріб через кому', () => {
     const result = rowsOf('campaign,spend\nPromo,1,5\n');
     expect(result.rows).toEqual([]);

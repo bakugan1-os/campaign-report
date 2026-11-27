@@ -242,30 +242,35 @@ export function parseCampaignCsv(text: string, options: ParseOptions): ParseResu
   for (const { record, info } of dataRecords) {
     const line = info.lines;
 
-    // Зайве поле найчастіше означає дріб через кому у файлі з розділювачем кома.
-    if (record.length > columns.length) {
+    // Деякі системи ставлять розділювач у кінці кожного рядка з даними, а в кінці
+    // заголовка ні. Порожнє поле в кінці не може бути дробом, тож це не помилка.
+    const fields = [...record];
+    while (fields.length > columns.length && (fields.at(-1) ?? '').trim() === '') fields.pop();
+
+    // Зайве поле зі значенням найчастіше означає дріб через кому у файлі з комою.
+    if (fields.length > columns.length) {
       issues.push({
         file,
         line,
         kind: 'помилка',
         message:
-          `забагато полів: ${record.length}, у заголовку ${columns.length}` +
+          `забагато полів: ${fields.length}, у заголовку ${columns.length}` +
           ' (дріб через кому треба брати в лапки)',
       });
       continue;
     }
 
-    if (record.length < columns.length) {
+    if (fields.length < columns.length) {
       issues.push({
         file,
         line,
         kind: 'помилка',
-        message: `замало полів: ${record.length}, у заголовку ${columns.length}`,
+        message: `замало полів: ${fields.length}, у заголовку ${columns.length}`,
       });
       continue;
     }
 
-    const campaign = (record[campaignIndex] ?? '').trim();
+    const campaign = (fields[campaignIndex] ?? '').trim();
     if (campaign === '') {
       issues.push({ file, line, kind: 'помилка', message: 'порожня назва кампанії' });
       continue;
@@ -282,7 +287,7 @@ export function parseCampaignCsv(text: string, options: ParseOptions): ParseResu
       continue;
     }
 
-    const amount = parseMoney(record[amountIndex] ?? '');
+    const amount = parseMoney(fields[amountIndex] ?? '');
     if (!amount.ok) {
       issues.push({ file, line, kind: 'помилка', message: amount.message });
       continue;
