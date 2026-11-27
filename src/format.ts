@@ -76,16 +76,26 @@ export function formatReport(report: Report, format: ReportFormat): string {
   return document([mdLine(COLUMNS), `| ${MD_ALIGNMENT.join(' | ')} |`, ...body.map(mdLine)]);
 }
 
+function issueLine(issue: Issue): string {
+  if (issue.file === undefined) return issue.message;
+  if (issue.line === undefined) return `${issue.file}: ${issue.message}`;
+  return `${issue.file}:${issue.line}: ${issue.message}`;
+}
+
+/**
+ * Проблеми без рядка-підсумку: для фатальної помилки, коли файл покинуто цілком,
+ * а не пропущено окремі рядки.
+ */
+export function formatIssueLines(issues: readonly Issue[]): string {
+  if (issues.length === 0) return '';
+  return document(issues.map(issueLine));
+}
+
 /** Звіт помилок для stderr. Порядок проблем не змінюємо. */
 export function formatIssuesText(issues: readonly Issue[]): string {
   if (issues.length === 0) return '';
 
-  const lines = issues.map((issue) => {
-    if (issue.file === undefined) return issue.message;
-    if (issue.line === undefined) return `${issue.file}: ${issue.message}`;
-    return `${issue.file}:${issue.line}: ${issue.message}`;
-  });
-
+  const lines = issues.map(issueLine);
   const skipped = countSkippedRows(issues);
   if (skipped > 0) lines.push(`Пропущено рядків: ${skipped}`);
 

@@ -1,6 +1,13 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { formatIssuesCsv, formatIssuesText, formatMoney, formatReport, formatRoi } from '../src/format.js';
+import {
+  formatIssueLines,
+  formatIssuesCsv,
+  formatIssuesText,
+  formatMoney,
+  formatReport,
+  formatRoi,
+} from '../src/format.js';
 import type { Report, TotalRow } from '../src/aggregate.js';
 import type { Issue } from '../src/types.js';
 
@@ -245,6 +252,30 @@ describe('formatIssuesText', () => {
 
   it('без проблем - порожній рядок', () => {
     expect(formatIssuesText([])).toBe('');
+  });
+});
+
+describe('formatIssueLines', () => {
+  it('не додає підсумку навіть коли в помилки є номер рядка', () => {
+    const fatal: Issue[] = [
+      {
+        file: 'spend.csv',
+        line: 3,
+        kind: 'помилка',
+        message: 'лапка не закрита, файл далі не читається',
+      },
+    ];
+    expect(formatIssueLines(fatal)).toBe(
+      'spend.csv:3: лапка не закрита, файл далі не читається\n',
+    );
+  });
+
+  it('для помилки рівня файлу дає те саме, що й звіт зі stderr', () => {
+    expect(formatIssueLines(missingColumnIssues)).toBe(formatIssuesText(missingColumnIssues));
+  });
+
+  it('без проблем - порожній рядок', () => {
+    expect(formatIssueLines([])).toBe('');
   });
 });
 

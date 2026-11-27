@@ -144,6 +144,27 @@ describe('e2e битий CSV', () => {
     );
     expect(result.stdout).toContain('winter-sale,50.00,100.00,100.00%');
   });
+
+  it('незакрита лапка: exit 1, без звіту і без errors.csv', () => {
+    const spend = join(workDir, 'unclosed-spend.csv');
+    const revenue = join(workDir, 'unclosed-revenue.csv');
+    const out = join(workDir, 'unclosed.csv');
+    writeFileSync(
+      spend,
+      'campaign,spend\nwinter-sale,50.00\n"Promo,100\nblack-friday,10.00\n',
+      'utf8',
+    );
+    writeFileSync(revenue, 'campaign,revenue\nwinter-sale,100.00\n', 'utf8');
+
+    const result = run(['--spend', spend, '--revenue', revenue, '--format', 'csv', '--out', out]);
+    expect(result.status).toBe(1);
+    expect(result.stdout).toBe('');
+    expect(result.stderr).toBe(
+      'unclosed-spend.csv:3: лапка не закрита, файл далі не читається\n',
+    );
+    expect(existsSync(out)).toBe(false);
+    expect(existsSync(`${out}.errors.csv`)).toBe(false);
+  });
 });
 
 describe('e2e аргументи', () => {

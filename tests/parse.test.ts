@@ -294,21 +294,30 @@ describe('parseCampaignCsv', () => {
     ]);
   });
 
-  it('незакрита лапка не валить запуск', () => {
-    const result = rowsOf('campaign,spend\n"Promo,100\n');
-    expect(result.rows).toEqual([]);
-    // Незакрита лапка з'їдає файл до кінця, тому номер рядка - там, де обірвалось.
-    expect(result.issues).toEqual([
-      { file: 'spend.csv', line: 2, kind: 'помилка', message: 'лапка не закрита' },
-    ]);
+  it('незакрита лапка - фатальна для файлу, з рядком, де лапка відкрилась', () => {
+    // Лапка з'їдає рядки 3-5, тому звіт будувався б з частини даних.
+    const result = parseCampaignCsv('campaign,spend\na,1.00\n"Promo,100\nb,2.00\nc,3.00\n', {
+      file: 'spend.csv',
+      amountColumn: 'spend',
+    });
+    expect(result).toEqual({
+      ok: false,
+      error: {
+        file: 'spend.csv',
+        line: 3,
+        kind: 'помилка',
+        message: 'лапка не закрита, файл далі не читається',
+      },
+    });
   });
 
-  it('незакрита лапка не з\'їдає рядки до себе', () => {
-    const result = rowsOf('campaign,spend\nwinter-sale,50.00\n"Promo,100\n');
-    expect(result.rows).toEqual([{ campaign: 'winter-sale', amountMinor: 5000 }]);
-    expect(result.issues).toEqual([
-      { file: 'spend.csv', line: 3, kind: 'помилка', message: 'лапка не закрита' },
-    ]);
+  it('незакрита лапка в першому ж рядку даних', () => {
+    const result = parseCampaignCsv('campaign,spend\n"Promo,100\n', {
+      file: 'spend.csv',
+      amountColumn: 'spend',
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.line).toBe(2);
   });
 
   it('пробіл перед лапкою не валить запуск', () => {

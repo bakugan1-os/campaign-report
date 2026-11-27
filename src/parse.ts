@@ -96,6 +96,8 @@ export function parseCampaignCsv(text: string, options: ParseOptions): ParseResu
   // Биті лапки не повинні валити запуск: csv-parse пропускає такий запис,
   // ми кладемо його в звіт помилок і читаємо файл далі.
   const broken: Issue[] = [];
+  // Незакрита лапка з'їдає файл до кінця - далі читати нічого, це фатально.
+  let quoteNotClosed = false;
   let records: RawRecord[];
   try {
     records = parse(text, {
@@ -106,6 +108,10 @@ export function parseCampaignCsv(text: string, options: ParseOptions): ParseResu
       skip_empty_lines: true,
       skip_records_with_error: true,
       on_skip: (error) => {
+        if ((error as { code?: unknown } | null | undefined)?.code === 'CSV_QUOTE_NOT_CLOSED') {
+          quoteNotClosed = true;
+          return undefined;
+        }
         const issue: Issue = {
           file,
           line: csvErrorLine(error),
@@ -125,6 +131,20 @@ export function parseCampaignCsv(text: string, options: ParseOptions): ParseResu
     return {
       ok: false,
       error: { file, kind: 'помилка', message: `не можу прочитати CSV: ${csvErrorText(error)}` },
+    };
+  }
+
+  if (quoteNotClosed) {
+    // Рядок обриву не кажемо: він у кінці файлу. Кажемо, де лапка відкрилась.
+    const lastGoodLine = records.at(-1)?.info.lines ?? 0;
+    return {
+      ok: false,
+      error: {
+        file,
+        line: lastGoodLine + 1,
+        kind: 'помилка',
+        message: 'лапка не закрита, файл далі не читається',
+      },
     };
   }
 

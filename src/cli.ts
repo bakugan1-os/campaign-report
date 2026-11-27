@@ -4,6 +4,7 @@ import { basename } from 'node:path';
 import { aggregate } from './aggregate.js';
 import {
   countSkippedRows,
+  formatIssueLines,
   formatIssuesCsv,
   formatIssuesText,
   formatReport,
@@ -97,7 +98,7 @@ if (!spend.ok || !revenue.ok) {
   const fatal: Issue[] = [];
   if (!spend.ok) fatal.push(spend.error);
   if (!revenue.ok) fatal.push(revenue.error);
-  process.stderr.write(formatIssuesText(fatal));
+  process.stderr.write(formatIssueLines(fatal));
   process.exit(1);
 }
 
