@@ -61,15 +61,33 @@ describe('aggregate', () => {
   it('нерозривний пробіл у назві не створює другої кампанії', () => {
     const report = aggregate([row('Black Friday', 10000)], [row('Black Friday', 30000)]);
     expect(report.rows).toEqual([
-      {
-        campaign: 'Black Friday',
-        spendMinor: 10000,
-        revenueMinor: 30000,
-        roiDefined: true,
-      },
+      { campaign: 'Black Friday', spendMinor: 10000, revenueMinor: 30000, roiDefined: true },
     ]);
-    expect(report.issues).toHaveLength(1);
-    expect(report.issues[0]?.message).toContain('злито');
+    expect(report.issues).toEqual([
+      { kind: 'попередження', message: 'злито: Black<U+00A0>Friday, Black Friday' },
+    ]);
+  });
+
+  it('у звіт іде перше написання, очищене від невидимих символів', () => {
+    const report = aggregate([row('Promo​', 10000)], [row('Promo', 30000)]);
+    expect(report.rows[0]?.campaign).toBe('Promo');
+    expect(report.issues).toEqual([
+      { kind: 'попередження', message: 'злито: Promo<U+200B>, Promo' },
+    ]);
+  });
+
+  it('регістр і апостроф у звіті лишаються як у першому написанні', () => {
+    const report = aggregate([row("ПʼЯТниця", 10000)], [row("п'ятниця", 30000)]);
+    expect(report.rows[0]?.campaign).toBe('ПʼЯТниця');
+  });
+
+  it('невидиму різницю NFD показуємо кодом', () => {
+    const report = aggregate(
+      [row('Йога'.normalize('NFD'), 10000)],
+      [row('Йога'.normalize('NFC'), 30000)],
+    );
+    expect(report.rows[0]?.campaign).toBe('Йога'.normalize('NFC'));
+    expect(report.issues[0]?.message).toBe('злито: И<U+0306>ога, Йога');
   });
 
   it('різні апострофи зводяться до одного', () => {

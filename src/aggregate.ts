@@ -29,14 +29,27 @@ interface Bucket {
  * NFD замість NFC, нерозривний пробіл, невидимі символи, три різні апострофи.
  * Саме написання лишаємо як є - у звіт іде те, що трапилось першим.
  */
-function mergeKey(name: string): string {
+function cleanName(name: string): string {
   return name
     .normalize('NFC')
     .replace(/\u00A0/g, ' ')
     .replace(/[\u200B-\u200D\uFEFF]/g, '')
-    .replace(/[\u02BC\u2019]/g, "'")
-    .trim()
-    .toLowerCase();
+    .trim();
+}
+
+function mergeKey(name: string): string {
+  return cleanName(name).replace(/[\u02BC\u2019]/g, "'").toLowerCase();
+}
+
+/**
+ * \u041D\u0435\u0432\u0438\u0434\u0438\u043C\u0443 \u0440\u0456\u0437\u043D\u0438\u0446\u044E \u043C\u0456\u0436 \u043D\u0430\u043F\u0438\u0441\u0430\u043D\u043D\u044F\u043C\u0438 \u043F\u043E\u043A\u0430\u0437\u0443\u0454\u043C\u043E \u043A\u043E\u0434\u043E\u043C, \u0456\u043D\u0430\u043A\u0448\u0435 \u043F\u043E\u043F\u0435\u0440\u0435\u0434\u0436\u0435\u043D\u043D\u044F
+ * \u0432\u0438\u0433\u043B\u044F\u0434\u0430\u0454 \u044F\u043A "\u0437\u043B\u0438\u0442\u043E: \u0419\u043E\u0433\u0430, \u0419\u043E\u0433\u0430".
+ */
+function withVisibleCodes(name: string): string {
+  return name.replace(
+    /[\u00A0\u200B-\u200D\uFEFF\u0300-\u036F]/g,
+    (char) => `<U+${(char.codePointAt(0) ?? 0).toString(16).toUpperCase().padStart(4, '0')}>`,
+  );
 }
 
 /** ROI визначений лише при додатних витратах: інакше ділення на нуль або безглуздий знак. */
@@ -72,7 +85,7 @@ export function aggregate(
     .map((bucket) => ({
       bucket,
       row: {
-        campaign: bucket.spellings[0] ?? '',
+        campaign: cleanName(bucket.spellings[0] ?? ''),
         spendMinor: bucket.spendMinor,
         revenueMinor: bucket.revenueMinor,
         roiDefined: isRoiDefined(bucket.spendMinor),
@@ -86,7 +99,7 @@ export function aggregate(
     .filter((entry) => entry.bucket.spellings.length > 1)
     .map((entry) => ({
       kind: 'попередження',
-      message: `злито: ${entry.bucket.spellings.join(', ')}`,
+      message: `злито: ${entry.bucket.spellings.map(withVisibleCodes).join(', ')}`,
     }));
 
   const spendMinor = rows.reduce((sum, item) => sum + item.spendMinor, 0);
