@@ -286,6 +286,25 @@ describe('formatIssuesText', () => {
     expect(formatIssuesText(missingColumnIssues)).toBe(fixture('missing-column/expected-errors.txt'));
   });
 
+  it('пропущений рядок підсумку теж рахується як пропущений', () => {
+    const issues: Issue[] = [
+      {
+        file: 'spend.csv',
+        line: 3,
+        kind: 'попередження',
+        message: 'пропущено рядок підсумку: "Total"',
+      },
+    ];
+    expect(formatIssuesText(issues)).toBe(
+      'spend.csv:3: пропущено рядок підсумку: "Total"\nПропущено рядків: 1\n',
+    );
+  });
+
+  it('попередження без номера рядка не рахується', () => {
+    expect(formatIssuesText(mergedIssues)).not.toContain('Пропущено рядків');
+    expect(formatIssuesText(emptyFileIssues)).not.toContain('Пропущено рядків');
+  });
+
   it('рахує пропущені рядки лише серед помилок з номером рядка', () => {
     const text = formatIssuesText([...brokenRowsIssues, ...mergedIssues, ...missingColumnIssues]);
     expect(text).toContain('Пропущено рядків: 7');

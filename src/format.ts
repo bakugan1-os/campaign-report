@@ -112,9 +112,12 @@ export function formatIssuesText(issues: readonly Issue[]): string {
   return document(lines);
 }
 
-/** Пропущені рядки - це помилки з номером рядка. Проблема рівня файлу рядків не їсть. */
+/**
+ * Пропущений рядок - будь-яка проблема, привʼязана до номера рядка: і битий рядок,
+ * і пропущений рядок підсумку. Проблема рівня файлу (без номера) рядків не їсть.
+ */
 export function countSkippedRows(issues: readonly Issue[]): number {
-  return issues.filter((issue) => issue.kind === 'помилка' && issue.line !== undefined).length;
+  return issues.filter((issue) => issue.line !== undefined).length;
 }
 
 /**

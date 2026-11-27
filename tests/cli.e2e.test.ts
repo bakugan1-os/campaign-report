@@ -119,6 +119,19 @@ describe('e2e --out', () => {
     expect(second.stderr).toBe('');
   });
 
+  it('пропущений рядок підсумку видно в підсумку stderr', () => {
+    const spend = join(workDir, 'total-spend.csv');
+    const revenue = join(workDir, 'total-revenue.csv');
+    const out = join(workDir, 'total.csv');
+    writeFileSync(spend, 'campaign,spend\nPromo,100.00\nTotal,100.00\n', 'utf8');
+    writeFileSync(revenue, 'campaign,revenue\nPromo,200.00\n', 'utf8');
+
+    const result = run(['--spend', spend, '--revenue', revenue, '--format', 'csv', '--out', out]);
+    expect(result.status).toBe(0);
+    expect(result.stderr).toContain('Пропущено рядків: 1');
+    expect(read(out)).toContain('Promo,100.00,200.00,100.00%');
+  });
+
   it('попередження теж доходять до errors.csv', () => {
     const out = join(workDir, 'merged.csv');
     const result = runFolder('duplicates', 'csv', ['--out', out]);
