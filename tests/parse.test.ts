@@ -304,6 +304,35 @@ describe('parseCampaignCsv', () => {
     });
   });
 
+  it('читає преамбулу sep=; від Excel', () => {
+    const result = rowsOf('sep=;\ncampaign;spend\nPromo;100,50\n');
+    expect(result.rows).toEqual([{ campaign: 'Promo', amountMinor: 10050 }]);
+    expect(result.issues).toEqual([]);
+  });
+
+  it('читає преамбулу sep=,', () => {
+    const result = rowsOf('sep=,\ncampaign,spend\nPromo,100.50\n');
+    expect(result.rows).toEqual([{ campaign: 'Promo', amountMinor: 10050 }]);
+    expect(result.issues).toEqual([]);
+  });
+
+  it('преамбула sep= не зсуває номери рядків у звіті помилок', () => {
+    const result = rowsOf('sep=;\ncampaign;spend\nPromo;abc\n');
+    expect(result.issues).toEqual([
+      { file: 'spend.csv', line: 3, kind: 'помилка', message: 'сума не число: "abc"' },
+    ]);
+  });
+
+  it('преамбула sep= разом з BOM і CRLF', () => {
+    const result = rowsOf('﻿sep=;\r\ncampaign;spend\r\nPromo;100,50\r\n');
+    expect(result.rows).toEqual([{ campaign: 'Promo', amountMinor: 10050 }]);
+  });
+
+  it('SEP= у будь-якому регістрі', () => {
+    const result = rowsOf('SEP=;\ncampaign;spend\nPromo;100,50\n');
+    expect(result.rows).toEqual([{ campaign: 'Promo', amountMinor: 10050 }]);
+  });
+
   it('рядок підсумку з вивантаження пропускається з попередженням', () => {
     const result = rowsOf('campaign,spend\nPromo,100.00\nTotal,100.00\n');
     expect(result.rows).toEqual([{ campaign: 'Promo', amountMinor: 10000 }]);
