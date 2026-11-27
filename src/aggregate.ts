@@ -32,9 +32,9 @@ interface Bucket {
 function mergeKey(name: string): string {
   return name
     .normalize('NFC')
-    .replace(/ /g, ' ')
-    .replace(/[​-‍﻿]/g, '')
-    .replace(/[ʼ’]/g, "'")
+    .replace(/\u00A0/g, ' ')
+    .replace(/[\u200B-\u200D\uFEFF]/g, '')
+    .replace(/[\u02BC\u2019]/g, "'")
     .trim()
     .toLowerCase();
 }

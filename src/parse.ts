@@ -85,7 +85,7 @@ function csvErrorText(error: unknown): string {
 export function parseCampaignCsv(text: string, options: ParseOptions): ParseResult {
   const { file, amountColumn } = options;
 
-  if (text.replace(/^﻿/, '').trim() === '') {
+  if (text.replace(/^\uFEFF/, '').trim() === '') {
     return {
       ok: true,
       rows: [],
