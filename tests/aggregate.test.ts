@@ -58,6 +58,47 @@ describe('aggregate', () => {
     ]);
   });
 
+  it('нерозривний пробіл у назві не створює другої кампанії', () => {
+    const report = aggregate([row('Black Friday', 10000)], [row('Black Friday', 30000)]);
+    expect(report.rows).toEqual([
+      {
+        campaign: 'Black Friday',
+        spendMinor: 10000,
+        revenueMinor: 30000,
+        roiDefined: true,
+      },
+    ]);
+    expect(report.issues).toHaveLength(1);
+    expect(report.issues[0]?.message).toContain('злито');
+  });
+
+  it('різні апострофи зводяться до одного', () => {
+    expect(aggregate([row("П'ятниця", 10000)], [row('Пʼятниця', 30000)]).rows).toHaveLength(1);
+    expect(aggregate([row('П’ятниця', 10000)], [row("П'ятниця", 30000)]).rows).toHaveLength(1);
+    expect(aggregate([row('Пʼятниця', 10000)], [row('П’ятниця', 30000)]).rows).toHaveLength(1);
+  });
+
+  it('NFD і NFC - одна кампанія', () => {
+    const report = aggregate(
+      [row('Йога'.normalize('NFD'), 10000)],
+      [row('Йога'.normalize('NFC'), 30000)],
+    );
+    expect(report.rows).toHaveLength(1);
+    expect(report.rows[0]?.revenueMinor).toBe(30000);
+  });
+
+  it('невидимі символи не створюють другої кампанії', () => {
+    expect(aggregate([row('Promo​', 10000)], [row('Promo', 30000)]).rows).toHaveLength(1);
+    expect(aggregate([row('Promo‍', 10000)], [row('Promo', 30000)]).rows).toHaveLength(1);
+    expect(aggregate([row('Promo﻿', 10000)], [row('Promo', 30000)]).rows).toHaveLength(1);
+  });
+
+  it('різні кампанії все одно не зливаються', () => {
+    const report = aggregate([row('Promo A', 10000), row('Promo B', 10000)], []);
+    expect(report.rows.map((item) => item.campaign)).toEqual(['Promo A', 'Promo B']);
+    expect(report.issues).toEqual([]);
+  });
+
   it('однакові написання не дають попередження', () => {
     const report = aggregate(
       [row('black-friday', 100000), row('black-friday', 50000)],

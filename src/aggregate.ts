@@ -24,6 +24,21 @@ interface Bucket {
   revenueMinor: number;
 }
 
+/**
+ * Ключ злиття назв. На вигляд однакові назви приходять по-різному:
+ * NFD замість NFC, нерозривний пробіл, невидимі символи, три різні апострофи.
+ * Саме написання лишаємо як є - у звіт іде те, що трапилось першим.
+ */
+function mergeKey(name: string): string {
+  return name
+    .normalize('NFC')
+    .replace(/ /g, ' ')
+    .replace(/[​-‍﻿]/g, '')
+    .replace(/[ʼ’]/g, "'")
+    .trim()
+    .toLowerCase();
+}
+
 /** ROI визначений лише при додатних витратах: інакше ділення на нуль або безглуздий знак. */
 function isRoiDefined(spendMinor: number): boolean {
   return spendMinor > 0;
@@ -38,7 +53,7 @@ export function aggregate(
   const collect = (rows: readonly ParsedRow[], field: 'spendMinor' | 'revenueMinor'): void => {
     for (const parsed of rows) {
       const name = parsed.campaign.trim();
-      const key = name.toLowerCase();
+      const key = mergeKey(name);
 
       let bucket = buckets.get(key);
       if (!bucket) {
