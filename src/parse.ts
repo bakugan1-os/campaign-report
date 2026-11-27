@@ -29,7 +29,19 @@ export function parseMoney(raw: string): MoneyResult {
     return { ok: false, message: `більше 2 знаків після коми: "${text}"` };
   }
 
-  const minor = Number(match[2] ?? '0') * 100 + Number(fraction.padEnd(2, '0'));
+  // У колонку суми інколи потрапляє довгий ID кампанії: Number() тихо загубив би
+  // молодші цифри, а не поскаржився.
+  const whole = (match[2] ?? '0').replace(/^0+(?=\d)/, '');
+  if (whole.length + fraction.length > 15) {
+    return { ok: false, message: `сума довша за 15 цифр: "${text}"` };
+  }
+
+  const minor = Number(whole) * 100 + Number(fraction.padEnd(2, '0'));
+  // 15 цифр без копійок дають 17 цифр мінорних одиниць - це вже за межею точних цілих.
+  if (!Number.isSafeInteger(minor)) {
+    return { ok: false, message: `сума завелика для точного підрахунку: "${text}"` };
+  }
+
   return { ok: true, minor: match[1] === '-' ? -minor : minor };
 }
 
